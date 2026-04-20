@@ -1,0 +1,9 @@
+[
+    {
+        "username": "admin",
+        "password_hash": "scrypt:32768:8:1$C00AoCALa6vQ88iQ$7fd76de05cbddd4b70c47cda8984fc1ec5a0a442f60db53b957dc40364d026e681a2ac3a34102a1b6eda94fef34c4643eca87a443241a49913c4af2a140eaf30",
+        "role": "admin",
+        "allowed_chains": [],
+        "allowed_pcs": []
+    }
+]

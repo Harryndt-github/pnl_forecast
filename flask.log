@@ -1,0 +1,488 @@
+
+    ╔═══════════════════════════════════════════════════╗
+    ║         AEON LEDGER — API Server                  ║
+    ║         http://localhost:5050                    ║
+    ╠═══════════════════════════════════════════════════╣
+    ║  Endpoints:                                       ║
+    ║   GET /api/health          → Connection test      ║
+    ║   GET /api/actual          → Actual data (MSSQL)  ║
+    ║   GET /api/actual/columns  → Column metadata      ║
+    ║   GET /api/actual/summary  → Aggregated summary   ║
+    ║   GET /api/actual/restaurants → Restaurant list    ║
+    ║   GET /api/actual/periods  → Available periods     ║
+    ║   GET /api/forecast        → Forecast (StarRocks) ║
+    ║   GET /api/forecast/columns→ Forecast columns     ║
+    ║   GET /api/pnl             → Combined PnL view    ║
+    ╚═══════════════════════════════════════════════════╝
+    
+ * Serving Flask app 'app'
+ * Debug mode: on
+2026-04-18 02:20:05,040 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.2.115:5050
+2026-04-18 02:20:05,040 [INFO] [33mPress CTRL+C to quit[0m
+2026-04-18 02:20:05,041 [INFO]  * Restarting with stat
+2026-04-18 02:20:05,176 [WARNING]  * Debugger is active!
+2026-04-18 02:20:05,183 [INFO]  * Debugger PIN: 190-500-742
+2026-04-18 02:20:07,810 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader…
+2026-04-18 02:20:22,827 [ERROR] [DB] Connection failed to 192.168.222.13: (20009, b'DB-Lib error message 20009, severity 9:\nUnable to connect: Adaptive Server is unavailable or does not exist (192.168.222.13)\nNet-Lib error during Operation timed out (60)\n')
+2026-04-18 02:20:22,827 [ERROR] [ACTUAL/SUMMARY] Error: (20009, b'DB-Lib error message 20009, severity 9:\nUnable to connect: Adaptive Server is unavailable or does not exist (192.168.222.13)\nNet-Lib error during Operation timed out (60)\n')
+2026-04-18 02:20:22,828 [INFO] 127.0.0.1 - - [18/Apr/2026 02:20:22] "[35m[1mGET /api/actual/summary HTTP/1.1[0m" 500 -
+2026-04-18 02:20:44,754 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader…
+2026-04-18 02:20:59,756 [ERROR] [DB] Connection failed to 192.168.222.13: (20009, b'DB-Lib error message 20009, severity 9:\nUnable to connect: Adaptive Server is unavailable or does not exist (192.168.222.13)\nNet-Lib error during Operation timed out (60)\n')
+2026-04-18 02:20:59,757 [ERROR] [ACTUAL/SUMMARY] Error: (20009, b'DB-Lib error message 20009, severity 9:\nUnable to connect: Adaptive Server is unavailable or does not exist (192.168.222.13)\nNet-Lib error during Operation timed out (60)\n')
+2026-04-18 02:20:59,764 [INFO] 127.0.0.1 - - [18/Apr/2026 02:20:59] "[35m[1mGET /api/actual/summary HTTP/1.1[0m" 500 -
+2026-04-18 02:21:13,780 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader…
+2026-04-18 02:21:28,781 [ERROR] [DB] Connection failed to 192.168.222.13: (20009, b'DB-Lib error message 20009, severity 9:\nUnable to connect: Adaptive Server is unavailable or does not exist (192.168.222.13)\nNet-Lib error during Operation timed out (60)\n')
+2026-04-18 02:21:28,781 [ERROR] [ACTUAL/SUMMARY] Error: (20009, b'DB-Lib error message 20009, severity 9:\nUnable to connect: Adaptive Server is unavailable or does not exist (192.168.222.13)\nNet-Lib error during Operation timed out (60)\n')
+2026-04-18 02:21:28,782 [INFO] 127.0.0.1 - - [18/Apr/2026 02:21:28] "[35m[1mGET /api/actual/summary HTTP/1.1[0m" 500 -
+2026-04-18 02:28:03,186 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "GET / HTTP/1.1" 200 -
+2026-04-18 02:28:03,484 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /css/styles.css HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,486 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "GET /js/data.js HTTP/1.1" 200 -
+2026-04-18 02:28:03,486 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /js/utils.js HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,487 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /js/charts.js HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,488 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "GET /js/dashboard.js HTTP/1.1" 200 -
+2026-04-18 02:28:03,488 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /js/onboarding.js HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,489 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /js/consolidation.js HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,490 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /js/forecast.js HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,491 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /js/app.js HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,491 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /js/newrestaurant.js HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,512 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader…
+2026-04-18 02:28:03,513 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader…
+2026-04-18 02:28:04,827 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:04] "GET /api/actual/datekeys HTTP/1.1" 200 -
+2026-04-18 02:28:04,839 [INFO] [CACHE] Busted all cached responses
+2026-04-18 02:28:04,840 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:04] "POST /api/cache/bust HTTP/1.1" 200 -
+2026-04-18 02:28:05,754 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:05] "GET /api/chains HTTP/1.1" 200 -
+2026-04-18 02:28:06,321 [INFO] [ACTUAL/SUMMARY] datekey=202604 pc=None
+2026-04-18 02:28:07,094 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:07] "GET /api/actual/summary HTTP/1.1" 200 -
+2026-04-18 02:28:29,312 [INFO] [CACHE] Busted all cached responses
+2026-04-18 02:28:29,313 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:29] "POST /api/cache/bust HTTP/1.1" 200 -
+2026-04-18 02:28:29,370 [INFO] [ACTUAL/SUMMARY] datekey=202603 pc=None
+2026-04-18 02:28:29,597 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:29] "GET /api/actual/summary?datekey=202603 HTTP/1.1" 200 -
+2026-04-18 02:29:50,863 [INFO] [CACHE] Busted all cached responses
+2026-04-18 02:29:50,864 [INFO] 192.168.2.115 - - [18/Apr/2026 02:29:50] "POST /api/cache/bust HTTP/1.1" 200 -
+2026-04-18 02:29:50,894 [INFO] [ACTUAL/SUMMARY] datekey=202603 pc=10AS4556
+2026-04-18 02:29:51,141 [INFO] 192.168.2.115 - - [18/Apr/2026 02:29:51] "GET /api/actual/summary?datekey=202603&pc=10AS4556 HTTP/1.1" 200 -
+2026-04-18 02:32:21,379 [INFO] [CACHE] Busted all cached responses
+2026-04-18 02:32:21,380 [INFO] 192.168.2.115 - - [18/Apr/2026 02:32:21] "POST /api/cache/bust HTTP/1.1" 200 -
+2026-04-18 02:32:21,418 [INFO] [ACTUAL/SUMMARY] datekey=202602 pc=10AS4556
+2026-04-18 02:32:21,632 [INFO] 192.168.2.115 - - [18/Apr/2026 02:32:21] "GET /api/actual/summary?datekey=202602&pc=10AS4556 HTTP/1.1" 200 -
+2026-04-18 02:33:32,718 [INFO] 192.168.2.115 - - [18/Apr/2026 02:33:32] "GET /api/chains HTTP/1.1" 200 -
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/multiprocessing/resource_tracker.py:216: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/multiprocessing/resource_tracker.py:216: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+2026-04-20 13:55:32,086 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://9.9.3.102:5050
+2026-04-20 13:55:32,086 [INFO] [33mPress CTRL+C to quit[0m
+2026-04-20 13:55:32,087 [INFO]  * Restarting with stat
+2026-04-20 13:55:32,246 [WARNING]  * Debugger is active!
+2026-04-20 13:55:32,247 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 13:58:55,755 [INFO] 127.0.0.1 - - [20/Apr/2026 13:58:55] "GET / HTTP/1.1" 200 -
+2026-04-20 13:58:55,766 [INFO] 127.0.0.1 - - [20/Apr/2026 13:58:55] "GET /css/styles.css HTTP/1.1" 200 -
+2026-04-20 13:58:56,000 [INFO] 127.0.0.1 - - [20/Apr/2026 13:58:56] "GET /js/data.js HTTP/1.1" 200 -
+2026-04-20 13:58:56,078 [INFO] 127.0.0.1 - - [20/Apr/2026 13:58:56] "GET /js/dashboard.js HTTP/1.1" 200 -
+2026-04-20 13:58:56,079 [INFO] 127.0.0.1 - - [20/Apr/2026 13:58:56] "GET /js/onboarding.js HTTP/1.1" 200 -
+2026-04-20 13:58:56,078 [INFO] 127.0.0.1 - - [20/Apr/2026 13:58:56] "GET /js/forecast.js HTTP/1.1" 200 -
+2026-04-20 13:58:56,079 [INFO] 127.0.0.1 - - [20/Apr/2026 13:58:56] "GET /js/utils.js HTTP/1.1" 200 -
+2026-04-20 13:58:56,078 [INFO] 127.0.0.1 - - [20/Apr/2026 13:58:56] "GET /js/charts.js HTTP/1.1" 200 -
+2026-04-20 13:58:56,313 [INFO] 127.0.0.1 - - [20/Apr/2026 13:58:56] "GET /js/consolidation.js HTTP/1.1" 200 -
+2026-04-20 13:58:56,392 [INFO] 127.0.0.1 - - [20/Apr/2026 13:58:56] "GET /js/newrestaurant.js HTTP/1.1" 200 -
+2026-04-20 13:58:56,392 [INFO] 127.0.0.1 - - [20/Apr/2026 13:58:56] "GET /js/lockmanager.js HTTP/1.1" 200 -
+2026-04-20 13:58:56,392 [INFO] 127.0.0.1 - - [20/Apr/2026 13:58:56] "GET /js/app.js HTTP/1.1" 200 -
+2026-04-20 13:58:57,561 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 13:58:57,561 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 13:58:57,821 [INFO] 127.0.0.1 - - [20/Apr/2026 13:58:57] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-04-20 13:59:06,745 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:06] "GET /api/master/log HTTP/1.1" 200 -
+2026-04-20 13:59:11,539 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:11] "[36mGET / HTTP/1.1[0m" 304 -
+2026-04-20 13:59:11,865 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:11] "[36mGET /js/utils.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:11,865 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:11] "[36mGET /js/charts.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:11,865 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:11] "[36mGET /js/data.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:11,865 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:11] "[36mGET /css/styles.css HTTP/1.1[0m" 304 -
+2026-04-20 13:59:12,172 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:12] "[36mGET /js/dashboard.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:12,172 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:12] "[36mGET /js/forecast.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:12,172 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:12] "[36mGET /js/onboarding.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:12,173 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:12] "[36mGET /js/consolidation.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:12,484 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:12] "[36mGET /js/newrestaurant.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:12,484 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:12] "[36mGET /js/app.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:12,484 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:12] "[36mGET /js/lockmanager.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:29,270 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:29] "[36mGET / HTTP/1.1[0m" 304 -
+2026-04-20 13:59:29,597 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:29] "[36mGET /js/data.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:29,598 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:29] "[36mGET /css/styles.css HTTP/1.1[0m" 304 -
+2026-04-20 13:59:29,598 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:29] "[36mGET /js/utils.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:29,598 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:29] "[36mGET /js/charts.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:29,905 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:29] "[36mGET /js/forecast.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:29,905 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:29] "[36mGET /js/dashboard.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:29,905 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:29] "[36mGET /js/onboarding.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:29,906 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:29] "[36mGET /js/consolidation.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:30,217 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:30] "[36mGET /js/newrestaurant.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:30,218 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:30] "[36mGET /js/app.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:30,218 [INFO] 127.0.0.1 - - [20/Apr/2026 13:59:30] "[36mGET /js/lockmanager.js HTTP/1.1[0m" 304 -
+2026-04-20 13:59:50,536 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 13:59:50,537 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 14:00:01,201 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 14:00:34,371 [INFO] 127.0.0.1 - - [20/Apr/2026 14:00:34] "GET /api/master/log HTTP/1.1" 200 -
+2026-04-20 14:05:35,719 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://9.9.3.102:5050
+2026-04-20 14:05:35,720 [INFO] [33mPress CTRL+C to quit[0m
+2026-04-20 14:05:35,720 [INFO]  * Restarting with stat
+2026-04-20 14:05:35,881 [WARNING]  * Debugger is active!
+2026-04-20 14:05:35,882 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 14:05:51,898 [INFO] 127.0.0.1 - - [20/Apr/2026 14:05:51] "GET / HTTP/1.1" 200 -
+2026-04-20 14:05:51,906 [INFO] 127.0.0.1 - - [20/Apr/2026 14:05:51] "GET /css/styles.css HTTP/1.1" 200 -
+2026-04-20 14:05:52,390 [INFO] 127.0.0.1 - - [20/Apr/2026 14:05:52] "GET /js/charts.js HTTP/1.1" 200 -
+2026-04-20 14:05:52,390 [INFO] 127.0.0.1 - - [20/Apr/2026 14:05:52] "GET /js/utils.js HTTP/1.1" 200 -
+2026-04-20 14:05:52,390 [INFO] 127.0.0.1 - - [20/Apr/2026 14:05:52] "GET /js/data.js HTTP/1.1" 200 -
+2026-04-20 14:05:52,392 [INFO] 127.0.0.1 - - [20/Apr/2026 14:05:52] "GET /js/dashboard.js HTTP/1.1" 200 -
+2026-04-20 14:05:52,392 [INFO] 127.0.0.1 - - [20/Apr/2026 14:05:52] "GET /js/onboarding.js HTTP/1.1" 200 -
+2026-04-20 14:05:52,392 [INFO] 127.0.0.1 - - [20/Apr/2026 14:05:52] "GET /js/forecast.js HTTP/1.1" 200 -
+2026-04-20 14:05:52,708 [INFO] 127.0.0.1 - - [20/Apr/2026 14:05:52] "GET /js/consolidation.js HTTP/1.1" 200 -
+2026-04-20 14:05:52,708 [INFO] 127.0.0.1 - - [20/Apr/2026 14:05:52] "GET /js/lockmanager.js HTTP/1.1" 200 -
+2026-04-20 14:05:52,708 [INFO] 127.0.0.1 - - [20/Apr/2026 14:05:52] "GET /js/newrestaurant.js HTTP/1.1" 200 -
+2026-04-20 14:05:52,709 [INFO] 127.0.0.1 - - [20/Apr/2026 14:05:52] "GET /js/app.js HTTP/1.1" 200 -
+2026-04-20 14:05:53,472 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 14:05:53,472 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 14:05:53,685 [INFO] 127.0.0.1 - - [20/Apr/2026 14:05:53] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-04-20 14:06:03,992 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:03] "[36mGET / HTTP/1.1[0m" 304 -
+2026-04-20 14:06:04,308 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:04] "[36mGET /js/data.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:04,308 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:04] "[36mGET /css/styles.css HTTP/1.1[0m" 304 -
+2026-04-20 14:06:04,308 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:04] "[36mGET /js/utils.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:04,309 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:04] "[36mGET /js/charts.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:04,310 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:04] "[36mGET /js/dashboard.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:04,311 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:04] "[36mGET /js/forecast.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:04,619 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:04] "[36mGET /js/onboarding.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:04,620 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:04] "[36mGET /js/consolidation.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:04,619 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:04] "[36mGET /js/newrestaurant.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:04,621 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:04] "[36mGET /js/app.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:04,620 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:04] "[36mGET /js/lockmanager.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:04,931 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 14:06:04,932 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 14:06:57,020 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:57] "[36mGET / HTTP/1.1[0m" 304 -
+2026-04-20 14:06:57,346 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:57] "[36mGET /js/data.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:57,346 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:57] "[36mGET /js/utils.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:57,346 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:57] "[36mGET /js/charts.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:57,347 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:57] "[36mGET /js/dashboard.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:57,347 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:57] "[36mGET /css/styles.css HTTP/1.1[0m" 304 -
+2026-04-20 14:06:57,348 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:57] "[36mGET /js/forecast.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:57,656 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:57] "[36mGET /js/consolidation.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:57,656 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:57] "[36mGET /js/onboarding.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:57,657 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:57] "[36mGET /js/newrestaurant.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:57,659 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:57] "[36mGET /js/app.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:57,659 [INFO] 127.0.0.1 - - [20/Apr/2026 14:06:57] "[36mGET /js/lockmanager.js HTTP/1.1[0m" 304 -
+2026-04-20 14:06:57,969 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 14:06:57,969 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 14:25:38,144 [INFO] 127.0.0.1 - - [20/Apr/2026 14:25:38] "[36mGET / HTTP/1.1[0m" 304 -
+2026-04-20 14:25:38,472 [INFO] 127.0.0.1 - - [20/Apr/2026 14:25:38] "[36mGET /js/utils.js HTTP/1.1[0m" 304 -
+2026-04-20 14:25:38,473 [INFO] 127.0.0.1 - - [20/Apr/2026 14:25:38] "[36mGET /js/data.js HTTP/1.1[0m" 304 -
+2026-04-20 14:25:38,474 [INFO] 127.0.0.1 - - [20/Apr/2026 14:25:38] "[36mGET /js/dashboard.js HTTP/1.1[0m" 304 -
+2026-04-20 14:25:38,474 [INFO] 127.0.0.1 - - [20/Apr/2026 14:25:38] "[36mGET /js/charts.js HTTP/1.1[0m" 304 -
+2026-04-20 14:25:38,473 [INFO] 127.0.0.1 - - [20/Apr/2026 14:25:38] "[36mGET /css/styles.css HTTP/1.1[0m" 304 -
+2026-04-20 14:25:38,475 [INFO] 127.0.0.1 - - [20/Apr/2026 14:25:38] "[36mGET /js/forecast.js HTTP/1.1[0m" 304 -
+2026-04-20 14:25:38,784 [INFO] 127.0.0.1 - - [20/Apr/2026 14:25:38] "[36mGET /js/consolidation.js HTTP/1.1[0m" 304 -
+2026-04-20 14:25:38,784 [INFO] 127.0.0.1 - - [20/Apr/2026 14:25:38] "[36mGET /js/onboarding.js HTTP/1.1[0m" 304 -
+2026-04-20 14:25:38,785 [INFO] 127.0.0.1 - - [20/Apr/2026 14:25:38] "[36mGET /js/lockmanager.js HTTP/1.1[0m" 304 -
+2026-04-20 14:25:38,785 [INFO] 127.0.0.1 - - [20/Apr/2026 14:25:38] "[36mGET /js/newrestaurant.js HTTP/1.1[0m" 304 -
+2026-04-20 14:25:38,785 [INFO] 127.0.0.1 - - [20/Apr/2026 14:25:38] "[36mGET /js/app.js HTTP/1.1[0m" 304 -
+2026-04-20 14:25:39,095 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 14:25:39,095 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 14:58:11,378 [INFO] 127.0.0.1 - - [20/Apr/2026 14:58:11] "[36mGET / HTTP/1.1[0m" 304 -
+2026-04-20 14:58:11,691 [INFO] 127.0.0.1 - - [20/Apr/2026 14:58:11] "[36mGET /css/styles.css HTTP/1.1[0m" 304 -
+2026-04-20 14:58:11,693 [INFO] 127.0.0.1 - - [20/Apr/2026 14:58:11] "[36mGET /js/data.js HTTP/1.1[0m" 304 -
+2026-04-20 14:58:11,694 [INFO] 127.0.0.1 - - [20/Apr/2026 14:58:11] "[36mGET /js/utils.js HTTP/1.1[0m" 304 -
+2026-04-20 14:58:11,694 [INFO] 127.0.0.1 - - [20/Apr/2026 14:58:11] "[36mGET /js/charts.js HTTP/1.1[0m" 304 -
+2026-04-20 14:58:11,696 [INFO] 127.0.0.1 - - [20/Apr/2026 14:58:11] "[36mGET /js/dashboard.js HTTP/1.1[0m" 304 -
+2026-04-20 14:58:11,697 [INFO] 127.0.0.1 - - [20/Apr/2026 14:58:11] "[36mGET /js/forecast.js HTTP/1.1[0m" 304 -
+2026-04-20 14:58:12,005 [INFO] 127.0.0.1 - - [20/Apr/2026 14:58:12] "[36mGET /js/newrestaurant.js HTTP/1.1[0m" 304 -
+2026-04-20 14:58:12,005 [INFO] 127.0.0.1 - - [20/Apr/2026 14:58:12] "[36mGET /js/consolidation.js HTTP/1.1[0m" 304 -
+2026-04-20 14:58:12,006 [INFO] 127.0.0.1 - - [20/Apr/2026 14:58:12] "[36mGET /js/onboarding.js HTTP/1.1[0m" 304 -
+2026-04-20 14:58:12,007 [INFO] 127.0.0.1 - - [20/Apr/2026 14:58:12] "[36mGET /js/lockmanager.js HTTP/1.1[0m" 304 -
+2026-04-20 14:58:12,007 [INFO] 127.0.0.1 - - [20/Apr/2026 14:58:12] "[36mGET /js/app.js HTTP/1.1[0m" 304 -
+2026-04-20 14:58:12,313 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 14:58:12,314 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 15:42:51,267 [INFO] 127.0.0.1 - - [20/Apr/2026 15:42:51] "[36mGET / HTTP/1.1[0m" 304 -
+2026-04-20 15:42:51,585 [INFO] 127.0.0.1 - - [20/Apr/2026 15:42:51] "[36mGET /css/styles.css HTTP/1.1[0m" 304 -
+2026-04-20 15:42:51,586 [INFO] 127.0.0.1 - - [20/Apr/2026 15:42:51] "[36mGET /js/charts.js HTTP/1.1[0m" 304 -
+2026-04-20 15:42:51,586 [INFO] 127.0.0.1 - - [20/Apr/2026 15:42:51] "[36mGET /js/utils.js HTTP/1.1[0m" 304 -
+2026-04-20 15:42:51,587 [INFO] 127.0.0.1 - - [20/Apr/2026 15:42:51] "[36mGET /js/data.js HTTP/1.1[0m" 304 -
+2026-04-20 15:42:51,586 [INFO] 127.0.0.1 - - [20/Apr/2026 15:42:51] "[36mGET /js/dashboard.js HTTP/1.1[0m" 304 -
+2026-04-20 15:42:51,588 [INFO] 127.0.0.1 - - [20/Apr/2026 15:42:51] "[36mGET /js/forecast.js HTTP/1.1[0m" 304 -
+2026-04-20 15:42:51,898 [INFO] 127.0.0.1 - - [20/Apr/2026 15:42:51] "[36mGET /js/consolidation.js HTTP/1.1[0m" 304 -
+2026-04-20 15:42:51,899 [INFO] 127.0.0.1 - - [20/Apr/2026 15:42:51] "[36mGET /js/onboarding.js HTTP/1.1[0m" 304 -
+2026-04-20 15:42:51,899 [INFO] 127.0.0.1 - - [20/Apr/2026 15:42:51] "[36mGET /js/newrestaurant.js HTTP/1.1[0m" 304 -
+2026-04-20 15:42:51,899 [INFO] 127.0.0.1 - - [20/Apr/2026 15:42:51] "[36mGET /js/lockmanager.js HTTP/1.1[0m" 304 -
+2026-04-20 15:42:51,900 [INFO] 127.0.0.1 - - [20/Apr/2026 15:42:51] "[36mGET /js/app.js HTTP/1.1[0m" 304 -
+2026-04-20 15:42:52,211 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 15:42:52,211 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader...
+2026-04-20 15:48:57,474 [INFO]  * Detected change in 'C:\\Users\\misproject\\Desktop\\pnl_forecast\\app.py', reloading
+2026-04-20 15:48:57,509 [INFO]  * Restarting with stat
+2026-04-20 15:48:57,688 [WARNING]  * Debugger is active!
+2026-04-20 15:48:57,689 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 15:48:57,821 [INFO] [CACHE] Busted all cached responses
+2026-04-20 15:48:57,822 [INFO] 127.0.0.1 - - [20/Apr/2026 15:48:57] "POST /api/cache/bust HTTP/1.1" 200 -
+2026-04-20 15:48:58,090 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 15:49:00,971 [INFO] [ACTUAL/SUMMARY] datekey=202604 pc=None
+2026-04-20 15:49:01,914 [INFO] [ACTUAL/SUMMARY] TC=1142416.0 from DAILY_SALES, TA=309537.02
+2026-04-20 15:49:01,915 [INFO] 127.0.0.1 - - [20/Apr/2026 15:49:01] "GET /api/actual/summary HTTP/1.1" 200 -
+2026-04-20 15:49:35,685 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://9.9.3.102:5050
+2026-04-20 15:49:35,685 [INFO] [33mPress CTRL+C to quit[0m
+2026-04-20 15:49:35,686 [INFO]  * Restarting with stat
+2026-04-20 15:49:35,844 [WARNING]  * Debugger is active!
+2026-04-20 15:49:35,844 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 15:50:59,991 [INFO] 127.0.0.1 - - [20/Apr/2026 15:50:59] "GET /api/health HTTP/1.1" 200 -
+2026-04-20 15:51:03,094 [INFO] [ACTUAL/SUMMARY] datekey=202604 pc=None
+2026-04-20 15:51:04,274 [INFO] [ACTUAL/SUMMARY] TC=1142416.0 from DAILY_SALES, TA=309537.02
+2026-04-20 15:51:04,275 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:04] "GET /api/actual/summary HTTP/1.1" 200 -
+2026-04-20 15:51:22,855 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:22] "[36mGET / HTTP/1.1[0m" 304 -
+2026-04-20 15:51:22,863 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:22] "[36mGET /css/styles.css HTTP/1.1[0m" 304 -
+2026-04-20 15:51:23,097 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:23] "[36mGET /js/data.js HTTP/1.1[0m" 304 -
+2026-04-20 15:51:23,176 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:23] "[36mGET /js/charts.js HTTP/1.1[0m" 304 -
+2026-04-20 15:51:23,177 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:23] "[36mGET /js/utils.js HTTP/1.1[0m" 304 -
+2026-04-20 15:51:23,177 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:23] "[36mGET /js/dashboard.js HTTP/1.1[0m" 304 -
+2026-04-20 15:51:23,178 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:23] "[36mGET /js/forecast.js HTTP/1.1[0m" 304 -
+2026-04-20 15:51:23,179 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:23] "[36mGET /js/onboarding.js HTTP/1.1[0m" 304 -
+2026-04-20 15:51:23,409 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:23] "[36mGET /js/consolidation.js HTTP/1.1[0m" 304 -
+2026-04-20 15:51:23,486 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:23] "[36mGET /js/newrestaurant.js HTTP/1.1[0m" 304 -
+2026-04-20 15:51:23,486 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:23] "[36mGET /js/lockmanager.js HTTP/1.1[0m" 304 -
+2026-04-20 15:51:23,486 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:23] "[36mGET /js/app.js HTTP/1.1[0m" 304 -
+2026-04-20 15:51:23,802 [WARNING] [DB] Stale connection detected -- reconnecting...
+2026-04-20 15:51:23,966 [WARNING] [DB] Stale connection detected -- reconnecting...
+2026-04-20 15:51:23,968 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 15:51:24,306 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 15:51:25,843 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:25] "GET /api/actual/datekeys HTTP/1.1" 200 -
+2026-04-20 15:51:25,845 [INFO] [CACHE] Busted all cached responses
+2026-04-20 15:51:25,845 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:25] "POST /api/cache/bust HTTP/1.1" 200 -
+2026-04-20 15:51:26,153 [WARNING] [DB] Stale connection detected -- reconnecting...
+2026-04-20 15:51:30,262 [ERROR] [CHAINS] Error: ("The cursor's connection was closed.", 'HY000')
+2026-04-20 15:51:30,263 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:30] "[35m[1mGET /api/chains HTTP/1.1[0m" 500 -
+2026-04-20 15:51:30,628 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 15:51:32,622 [INFO] [ACTUAL/SUMMARY] datekey=202604 pc=None
+2026-04-20 15:51:46,516 [INFO] [ACTUAL/SUMMARY] TC=1142416.0 from DAILY_SALES, TA=309537.02
+2026-04-20 15:51:46,518 [INFO] 127.0.0.1 - - [20/Apr/2026 15:51:46] "GET /api/actual/summary HTTP/1.1" 200 -
+2026-04-20 15:52:59,625 [INFO] 127.0.0.1 - - [20/Apr/2026 15:52:59] "GET /api/chains HTTP/1.1" 200 -
+2026-04-20 15:56:11,023 [INFO] [FORECAST/COMPUTE] Merged TC from DAILY_SALES for 12 periods
+2026-04-20 15:56:11,421 [WARNING] [FORECAST/COMPUTE] Could not fetch previous forecast: (5501, "Unknown database 'datamart_mis_prod'")
+2026-04-20 15:56:11,425 [INFO] 127.0.0.1 - - [20/Apr/2026 15:56:11] "POST /api/forecast/compute HTTP/1.1" 200 -
+2026-04-20 15:57:10,463 [INFO] [FORECAST/COMPUTE] Merged TC from DAILY_SALES for 12 periods
+2026-04-20 15:57:11,113 [WARNING] [FORECAST/COMPUTE] Could not fetch previous forecast: (5501, "Unknown database 'datamart_mis_prod'")
+2026-04-20 15:57:11,116 [INFO] 127.0.0.1 - - [20/Apr/2026 15:57:11] "POST /api/forecast/compute HTTP/1.1" 200 -
+2026-04-20 16:02:34,758 [INFO]  * Detected change in 'C:\\Users\\misproject\\Desktop\\pnl_forecast\\test_tc.py', reloading
+2026-04-20 16:02:34,760 [INFO]  * Detected change in 'C:\\Users\\misproject\\Desktop\\pnl_forecast\\test_tc.py', reloading
+2026-04-20 16:02:34,782 [INFO]  * Restarting with stat
+2026-04-20 16:02:34,958 [WARNING]  * Debugger is active!
+2026-04-20 16:02:34,959 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 16:03:08,037 [INFO]  * Detected change in 'C:\\Users\\misproject\\Desktop\\pnl_forecast\\test_tc.py', reloading
+2026-04-20 16:03:08,060 [INFO]  * Restarting with stat
+2026-04-20 16:03:08,230 [WARNING]  * Debugger is active!
+2026-04-20 16:03:08,231 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 16:03:28,283 [INFO]  * Detected change in 'C:\\Users\\misproject\\Desktop\\pnl_forecast\\test_tc.py', reloading
+2026-04-20 16:03:28,304 [INFO]  * Restarting with stat
+2026-04-20 16:03:28,473 [WARNING]  * Debugger is active!
+2026-04-20 16:03:28,474 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 16:04:40,625 [INFO]  * Detected change in 'C:\\Users\\misproject\\Desktop\\pnl_forecast\\test_tc.py', reloading
+2026-04-20 16:04:40,650 [INFO]  * Restarting with stat
+2026-04-20 16:04:40,808 [WARNING]  * Debugger is active!
+2026-04-20 16:04:40,809 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 16:05:47,972 [INFO]  * Detected change in 'C:\\Users\\misproject\\Desktop\\pnl_forecast\\app.py', reloading
+2026-04-20 16:05:47,995 [INFO]  * Restarting with stat
+2026-04-20 16:05:48,151 [WARNING]  * Debugger is active!
+2026-04-20 16:05:48,152 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 16:05:58,183 [INFO]  * Detected change in 'C:\\Users\\misproject\\Desktop\\pnl_forecast\\app.py', reloading
+2026-04-20 16:05:58,206 [INFO]  * Restarting with stat
+2026-04-20 16:05:58,366 [WARNING]  * Debugger is active!
+2026-04-20 16:05:58,367 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 16:06:15,002 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://9.9.3.102:5050
+2026-04-20 16:06:15,002 [INFO] [33mPress CTRL+C to quit[0m
+2026-04-20 16:06:15,002 [INFO]  * Restarting with stat
+2026-04-20 16:06:15,157 [WARNING]  * Debugger is active!
+2026-04-20 16:06:15,158 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 16:07:06,721 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:06] "[36mGET / HTTP/1.1[0m" 304 -
+2026-04-20 16:07:06,731 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:06] "[36mGET /css/styles.css HTTP/1.1[0m" 304 -
+2026-04-20 16:07:06,963 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:06] "[36mGET /js/data.js HTTP/1.1[0m" 304 -
+2026-04-20 16:07:07,042 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:07] "[36mGET /js/charts.js HTTP/1.1[0m" 304 -
+2026-04-20 16:07:07,042 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:07] "[36mGET /js/dashboard.js HTTP/1.1[0m" 304 -
+2026-04-20 16:07:07,043 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:07] "[36mGET /js/utils.js HTTP/1.1[0m" 304 -
+2026-04-20 16:07:07,045 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:07] "[36mGET /js/forecast.js HTTP/1.1[0m" 304 -
+2026-04-20 16:07:07,045 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:07] "[36mGET /js/onboarding.js HTTP/1.1[0m" 304 -
+2026-04-20 16:07:07,275 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:07] "[36mGET /js/consolidation.js HTTP/1.1[0m" 304 -
+2026-04-20 16:07:07,355 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:07] "[36mGET /js/newrestaurant.js HTTP/1.1[0m" 304 -
+2026-04-20 16:07:07,355 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:07] "[36mGET /js/lockmanager.js HTTP/1.1[0m" 304 -
+2026-04-20 16:07:07,356 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:07] "[36mGET /js/app.js HTTP/1.1[0m" 304 -
+2026-04-20 16:07:07,667 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 16:07:07,668 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 16:07:09,112 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:09] "GET /api/chains HTTP/1.1" 200 -
+2026-04-20 16:07:10,868 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:10] "GET /api/actual/datekeys HTTP/1.1" 200 -
+2026-04-20 16:07:10,870 [INFO] [CACHE] Busted all cached responses
+2026-04-20 16:07:10,871 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:10] "POST /api/cache/bust HTTP/1.1" 200 -
+2026-04-20 16:07:20,674 [INFO] [ACTUAL/SUMMARY] datekey=202604 pc=None
+2026-04-20 16:07:21,987 [INFO] [ACTUAL/SUMMARY] TC=1142416.0 from DAILY_SALES, TA=309537.02
+2026-04-20 16:07:21,988 [INFO] 127.0.0.1 - - [20/Apr/2026 16:07:21] "GET /api/actual/summary HTTP/1.1" 200 -
+2026-04-20 16:08:10,612 [INFO] 127.0.0.1 - - [20/Apr/2026 16:08:10] "GET /api/chains HTTP/1.1" 200 -
+2026-04-20 16:19:58,990 [INFO]  * Detected change in 'C:\\Users\\misproject\\Desktop\\pnl_forecast\\app.py', reloading
+2026-04-20 16:19:59,026 [INFO]  * Restarting with stat
+2026-04-20 16:19:59,193 [WARNING]  * Debugger is active!
+2026-04-20 16:19:59,193 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 16:19:59,256 [INFO]  * Detected change in 'C:\\Users\\misproject\\Desktop\\pnl_forecast\\app.py', reloading
+2026-04-20 16:20:17,449 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://9.9.3.102:5050
+2026-04-20 16:20:17,449 [INFO] [33mPress CTRL+C to quit[0m
+2026-04-20 16:20:17,450 [INFO]  * Restarting with stat
+2026-04-20 16:20:17,613 [WARNING]  * Debugger is active!
+2026-04-20 16:20:17,614 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 16:20:50,676 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:50] "[36mGET / HTTP/1.1[0m" 304 -
+2026-04-20 16:20:50,685 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:50] "[36mGET /css/styles.css HTTP/1.1[0m" 304 -
+2026-04-20 16:20:50,920 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:50] "[36mGET /js/data.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:51,001 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:51] "[36mGET /js/dashboard.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:51,002 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:51] "[36mGET /js/utils.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:51,002 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:51] "GET /js/forecast.js HTTP/1.1" 200 -
+2026-04-20 16:20:51,002 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:51] "[36mGET /js/charts.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:51,003 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:51] "[36mGET /js/onboarding.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:51,234 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:51] "[36mGET /js/consolidation.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:51,317 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:51] "[36mGET /js/lockmanager.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:51,318 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:51] "[36mGET /js/app.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:51,318 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:51] "[36mGET /js/newrestaurant.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:51,633 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 16:20:51,634 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 16:20:58,796 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:58] "[36mGET / HTTP/1.1[0m" 304 -
+2026-04-20 16:20:59,123 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:59] "[36mGET /js/data.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:59,125 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:59] "[36mGET /css/styles.css HTTP/1.1[0m" 304 -
+2026-04-20 16:20:59,124 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:59] "[36mGET /js/charts.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:59,124 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:59] "[36mGET /js/utils.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:59,125 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:59] "[36mGET /js/dashboard.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:59,127 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:59] "[36mGET /js/forecast.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:59,433 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:59] "[36mGET /js/consolidation.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:59,433 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:59] "[36mGET /js/onboarding.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:59,433 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:59] "[36mGET /js/newrestaurant.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:59,435 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:59] "[36mGET /js/lockmanager.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:59,436 [INFO] 127.0.0.1 - - [20/Apr/2026 16:20:59] "[36mGET /js/app.js HTTP/1.1[0m" 304 -
+2026-04-20 16:20:59,755 [WARNING] [DB] Stale connection detected -- reconnecting...
+2026-04-20 16:20:59,756 [WARNING] [DB] Stale connection detected -- reconnecting...
+2026-04-20 16:20:59,756 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 16:21:05,575 [ERROR] [DATEKEYS] Error: ("The cursor's connection was closed.", 'HY000')
+2026-04-20 16:21:05,576 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:05] "[35m[1mGET /api/actual/datekeys HTTP/1.1[0m" 500 -
+2026-04-20 16:21:05,577 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:05] "GET /api/actual/datekeys HTTP/1.1" 200 -
+2026-04-20 16:21:05,581 [INFO] [CACHE] Busted all cached responses
+2026-04-20 16:21:05,581 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:05] "POST /api/cache/bust HTTP/1.1" 200 -
+2026-04-20 16:21:05,811 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 16:21:05,892 [WARNING] [DB] Stale connection detected -- reconnecting...
+2026-04-20 16:21:41,683 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:41] "[36mGET / HTTP/1.1[0m" 304 -
+2026-04-20 16:21:42,010 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:42] "[36mGET /css/styles.css HTTP/1.1[0m" 304 -
+2026-04-20 16:21:42,010 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:42] "[36mGET /js/utils.js HTTP/1.1[0m" 304 -
+2026-04-20 16:21:42,010 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:42] "[36mGET /js/data.js HTTP/1.1[0m" 304 -
+2026-04-20 16:21:42,010 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:42] "[36mGET /js/charts.js HTTP/1.1[0m" 304 -
+2026-04-20 16:21:42,012 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:42] "[36mGET /js/dashboard.js HTTP/1.1[0m" 304 -
+2026-04-20 16:21:42,013 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:42] "[36mGET /js/forecast.js HTTP/1.1[0m" 304 -
+2026-04-20 16:21:42,321 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:42] "[36mGET /js/onboarding.js HTTP/1.1[0m" 304 -
+2026-04-20 16:21:42,322 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:42] "[36mGET /js/newrestaurant.js HTTP/1.1[0m" 304 -
+2026-04-20 16:21:42,323 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:42] "[36mGET /js/lockmanager.js HTTP/1.1[0m" 304 -
+2026-04-20 16:21:42,322 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:42] "[36mGET /js/consolidation.js HTTP/1.1[0m" 304 -
+2026-04-20 16:21:42,324 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:42] "[36mGET /js/app.js HTTP/1.1[0m" 304 -
+2026-04-20 16:21:42,634 [WARNING] [DB] Stale connection detected -- reconnecting...
+2026-04-20 16:21:42,634 [WARNING] [DB] Stale connection detected -- reconnecting...
+2026-04-20 16:21:42,636 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 16:21:42,637 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 16:21:46,132 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:46] "GET /api/actual/datekeys HTTP/1.1" 200 -
+2026-04-20 16:21:46,134 [INFO] [CACHE] Busted all cached responses
+2026-04-20 16:21:46,134 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:46] "POST /api/cache/bust HTTP/1.1" 200 -
+2026-04-20 16:21:48,414 [INFO] [ACTUAL/SUMMARY] datekey=202604 pc=None
+2026-04-20 16:21:50,865 [ERROR] [CHAINS] Error: ("The cursor's connection was closed.", 'HY000')
+2026-04-20 16:21:50,866 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:50] "[35m[1mGET /api/chains HTTP/1.1[0m" 500 -
+2026-04-20 16:21:50,975 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:50] "GET /api/chains HTTP/1.1" 200 -
+2026-04-20 16:21:51,024 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 16:21:51,429 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:51] "GET /api/chains HTTP/1.1" 200 -
+2026-04-20 16:21:51,781 [INFO] [ACTUAL/SUMMARY] TC=1142416.0 from DAILY_SALES, TA=309537.02
+2026-04-20 16:21:51,781 [INFO] [ACTUAL/SUMMARY] datekey=202604 pc=None
+2026-04-20 16:21:51,847 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:51] "GET /api/actual/summary HTTP/1.1" 200 -
+2026-04-20 16:21:52,351 [INFO] [ACTUAL/SUMMARY] TC=1142416.0 from DAILY_SALES, TA=309537.02
+2026-04-20 16:21:52,351 [INFO] 127.0.0.1 - - [20/Apr/2026 16:21:52] "GET /api/actual/summary HTTP/1.1" 200 -
+2026-04-20 16:23:11,351 [INFO] 127.0.0.1 - - [20/Apr/2026 16:23:11] "GET /api/chains HTTP/1.1" 200 -
+2026-04-20 16:28:51,564 [INFO] [FORECAST/COMPUTE] Merged TC from DAILY_SALES for 12 periods
+2026-04-20 16:28:51,734 [WARNING] [FORECAST/COMPUTE] Could not fetch previous forecast: (5501, "Unknown database 'datamart_mis_prod'")
+2026-04-20 16:28:51,736 [INFO] 127.0.0.1 - - [20/Apr/2026 16:28:51] "POST /api/forecast/compute HTTP/1.1" 200 -
+2026-04-20 16:30:58,564 [INFO] [FORECAST/COMPUTE] Merged TC from DAILY_SALES for 12 periods
+2026-04-20 16:30:58,722 [WARNING] [FORECAST/COMPUTE] Could not fetch previous forecast: (5501, "Unknown database 'datamart_mis_prod'")
+2026-04-20 16:30:58,726 [INFO] 127.0.0.1 - - [20/Apr/2026 16:30:58] "POST /api/forecast/compute HTTP/1.1" 200 -
+2026-04-20 16:32:39,233 [INFO] [FORECAST/COMPUTE] Merged TC from DAILY_SALES for 12 periods
+2026-04-20 16:32:39,346 [WARNING] [FORECAST/COMPUTE] Could not fetch previous forecast: (5501, "Unknown database 'datamart_mis_prod'")
+2026-04-20 16:32:39,348 [INFO] 127.0.0.1 - - [20/Apr/2026 16:32:39] "POST /api/forecast/compute HTTP/1.1" 200 -
+2026-04-20 16:41:25,936 [INFO]  * Detected change in 'C:\\Users\\misproject\\Desktop\\pnl_forecast\\app.py', reloading
+2026-04-20 16:41:26,304 [INFO]  * Detected change in 'C:\\Users\\misproject\\Desktop\\pnl_forecast\\app.py', reloading
+2026-04-20 16:41:26,327 [INFO]  * Restarting with stat
+2026-04-20 16:41:26,491 [WARNING]  * Debugger is active!
+2026-04-20 16:41:26,492 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 16:43:50,024 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://9.9.3.102:5050
+2026-04-20 16:43:50,024 [INFO] [33mPress CTRL+C to quit[0m
+2026-04-20 16:43:50,024 [INFO]  * Restarting with stat
+2026-04-20 16:43:50,179 [WARNING]  * Debugger is active!
+2026-04-20 16:43:50,180 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 16:45:11,115 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:11] "GET / HTTP/1.1" 200 -
+2026-04-20 16:45:11,125 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:11] "[36mGET /css/styles.css HTTP/1.1[0m" 304 -
+2026-04-20 16:45:11,350 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:11] "[36mGET /js/data.js HTTP/1.1[0m" 304 -
+2026-04-20 16:45:11,441 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:11] "[36mGET /js/utils.js HTTP/1.1[0m" 304 -
+2026-04-20 16:45:11,441 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:11] "[36mGET /js/dashboard.js HTTP/1.1[0m" 304 -
+2026-04-20 16:45:11,441 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:11] "[36mGET /js/charts.js HTTP/1.1[0m" 304 -
+2026-04-20 16:45:11,443 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:11] "[36mGET /js/forecast.js HTTP/1.1[0m" 304 -
+2026-04-20 16:45:11,444 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:11] "[36mGET /js/onboarding.js HTTP/1.1[0m" 304 -
+2026-04-20 16:45:11,661 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:11] "[36mGET /js/consolidation.js HTTP/1.1[0m" 304 -
+2026-04-20 16:45:11,755 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:11] "GET /js/newrestaurant.js HTTP/1.1" 200 -
+2026-04-20 16:45:11,755 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:11] "[36mGET /js/lockmanager.js HTTP/1.1[0m" 304 -
+2026-04-20 16:45:11,756 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:11] "[36mGET /js/app.js HTTP/1.1[0m" 304 -
+2026-04-20 16:45:12,073 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 16:45:12,073 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 16:45:14,692 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:14] "GET /api/actual/datekeys HTTP/1.1" 200 -
+2026-04-20 16:45:14,696 [INFO] [CACHE] Busted all cached responses
+2026-04-20 16:45:14,696 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:14] "POST /api/cache/bust HTTP/1.1" 200 -
+2026-04-20 16:45:15,599 [INFO] [ACTUAL/SUMMARY] datekey=202604 pc=None
+2026-04-20 16:45:16,309 [INFO] [ACTUAL/SUMMARY] TC=1142416.0 from DAILY_SALES, TA=309537.02
+2026-04-20 16:45:16,310 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:16] "GET /api/actual/summary HTTP/1.1" 200 -
+2026-04-20 16:45:16,436 [INFO] 127.0.0.1 - - [20/Apr/2026 16:45:16] "GET /api/chains HTTP/1.1" 200 -
+2026-04-20 17:17:43,994 [INFO]  * Detected change in 'C:\\Users\\misproject\\Desktop\\pnl_forecast\\app.py', reloading
+2026-04-20 17:17:44,016 [INFO]  * Restarting with stat
+2026-04-20 17:17:44,476 [WARNING]  * Debugger is active!
+2026-04-20 17:17:44,476 [INFO]  * Debugger PIN: 148-462-111
+2026-04-20 17:17:44,827 [INFO]  * Detected change in 'C:\\Users\\misproject\\Desktop\\pnl_forecast\\app.py', reloading
+2026-04-20 17:18:12,550 [INFO]  * Detected change in 'C:\\Users\\misproject\\Desktop\\pnl_forecast\\app.py', reloading
+2026-04-20 17:18:12,590 [INFO]  * Restarting with stat
+2026-04-20 17:18:12,977 [INFO] Serving on http://0.0.0.0:5050
+2026-04-20 17:19:52,680 [INFO] Serving on http://0.0.0.0:5050
+2026-04-20 17:31:58,191 [INFO] Serving on http://0.0.0.0:5050
+2026-04-20 17:57:14,142 [INFO] Serving on http://0.0.0.0:5050
+2026-04-20 19:19:08,788 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 19:19:09,030 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 19:19:10,535 [INFO] [CACHE] Busted all cached responses
+2026-04-20 19:19:11,043 [INFO] [ACTUAL/SUMMARY] datekey=202604 pc=None
+2026-04-20 19:19:12,900 [INFO] [ACTUAL/SUMMARY] TC=1142416.0 from DAILY_SALES, TA=309537.02
+2026-04-20 19:19:57,956 [INFO] [MASTER] Loaded 1008 restaurants from Excel
+2026-04-20 19:25:18,936 [WARNING] [DB] Stale connection detected -- reconnecting...
+2026-04-20 19:25:19,598 [ERROR] [CHAINS] Error: ("The cursor's connection was closed.", 'HY000')
+2026-04-20 19:25:19,676 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 19:25:19,979 [INFO] [CACHE] Busted all cached responses
+2026-04-20 19:25:20,552 [INFO] [ACTUAL/SUMMARY] datekey=202604 pc=None
+2026-04-20 19:25:20,702 [INFO] [ACTUAL/SUMMARY] TC=1142416.0 from DAILY_SALES, TA=309537.02
+2026-04-20 19:30:58,510 [WARNING] [DB] Stale connection detected -- reconnecting...
+2026-04-20 19:30:59,086 [ERROR] [CHAINS] Error: ("The cursor's connection was closed.", 'HY000')
+2026-04-20 19:30:59,160 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 19:30:59,334 [INFO] [CACHE] Busted all cached responses
+2026-04-20 19:31:00,097 [INFO] [ACTUAL/SUMMARY] datekey=202604 pc=None
+2026-04-20 19:31:00,244 [INFO] [ACTUAL/SUMMARY] TC=1142416.0 from DAILY_SALES, TA=309537.02
+2026-04-20 19:34:32,004 [WARNING] [DB] Stale connection detected -- reconnecting...
+2026-04-20 19:34:32,594 [ERROR] [CHAINS] Error: ("The cursor's connection was closed.", 'HY000')
+2026-04-20 19:34:32,667 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader using SQL Server...
+2026-04-20 19:34:32,866 [INFO] [CACHE] Busted all cached responses
+2026-04-20 19:34:33,442 [INFO] [ACTUAL/SUMMARY] datekey=202604 pc=None
+2026-04-20 19:34:33,586 [INFO] [ACTUAL/SUMMARY] TC=1142416.0 from DAILY_SALES, TA=309537.02

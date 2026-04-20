@@ -1,0 +1,86 @@
+[
+  {
+    "timestamp": "2026-04-18T23:25:01.882075",
+    "action": "LOAD_EXCEL",
+    "count": 1008,
+    "details": "Loaded from /Users/mdluffy/Desktop/pnl_forecast/Open_Close.xlsx"
+  },
+  {
+    "timestamp": "2026-04-18T23:25:16.910968",
+    "action": "API_SERVE",
+    "count": 1008,
+    "details": "Served 1008 restaurants (DB matched: 0)"
+  },
+  {
+    "timestamp": "2026-04-18T23:28:34.190834",
+    "action": "API_SERVE",
+    "count": 1008,
+    "details": "Served 1008 restaurants (DB matched: 0)"
+  },
+  {
+    "timestamp": "2026-04-18T23:29:26.267916",
+    "action": "API_SERVE",
+    "count": 1008,
+    "details": "Served 1008 restaurants (DB matched: 0)"
+  },
+  {
+    "timestamp": "2026-04-18T23:30:02.544779",
+    "action": "LOAD_EXCEL",
+    "count": 1008,
+    "details": "Loaded from /Users/mdluffy/Desktop/pnl_forecast/Open_Close.xlsx"
+  },
+  {
+    "timestamp": "2026-04-18T23:30:04.772694",
+    "action": "API_SERVE",
+    "count": 1008,
+    "details": "Served 1008 restaurants (DB matched: 1005)"
+  },
+  {
+    "timestamp": "2026-04-19T00:02:36.701902",
+    "action": "LOAD_EXCEL",
+    "count": 1008,
+    "details": "Loaded from /Users/mdluffy/Desktop/pnl_forecast/Open_Close.xlsx"
+  },
+  {
+    "timestamp": "2026-04-19T00:02:37.813951",
+    "action": "API_SERVE",
+    "count": 1008,
+    "details": "Served 1008 restaurants (DB matched: 1005)"
+  },
+  {
+    "timestamp": "2026-04-19T17:10:32.731508",
+    "action": "LOAD_EXCEL",
+    "count": 1008,
+    "details": "Loaded from /Users/mdluffy/Desktop/pnl_forecast/Open_Close.xlsx"
+  },
+  {
+    "timestamp": "2026-04-19T17:10:33.815661",
+    "action": "API_SERVE",
+    "count": 1008,
+    "details": "Served 1008 restaurants (DB matched: 1005)"
+  },
+  {
+    "timestamp": "2026-04-19T20:09:32.048685",
+    "action": "LOAD_EXCEL",
+    "count": 1008,
+    "details": "Loaded from /Users/mdluffy/Desktop/pnl_forecast/Open_Close.xlsx"
+  },
+  {
+    "timestamp": "2026-04-19T20:09:47.052817",
+    "action": "API_SERVE",
+    "count": 1008,
+    "details": "Served 1008 restaurants (DB matched: 0)"
+  },
+  {
+    "timestamp": "2026-04-20T02:12:44.774925",
+    "action": "LOAD_EXCEL",
+    "count": 1008,
+    "details": "Loaded from /Users/mdluffy/Desktop/pnl_forecast/Open_Close.xlsx"
+  },
+  {
+    "timestamp": "2026-04-20T02:12:45.904487",
+    "action": "API_SERVE",
+    "count": 1008,
+    "details": "Served 1008 restaurants (DB matched: 1005)"
+  }
+]

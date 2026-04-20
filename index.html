@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PnL Forecast</title>
+    <meta name="description" content="PnL Forecast — Hệ thống dự báo chi phí & doanh thu, báo cáo Lãi Lỗ tổng hợp.">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    
+    <!-- SheetJS (XLSX) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/styles.css">
+
+    <!-- Global API Auth Interceptor -->
+    <script>
+    (function() {
+        const originalFetch = window.fetch;
+        window.fetch = async function(...args) {
+            
+            // To ensure credentials (cookies) are sent with every API call
+            if (args.length === 1 && typeof args[0] === 'string') {
+                args.push({ credentials: 'same-origin' });
+            } else if (args.length >= 2 && typeof args[1] === 'object') {
+                args[1].credentials = args[1].credentials || 'same-origin';
+            }
+
+            const response = await originalFetch.apply(this, args);
+            if (response.status === 401) {
+                const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url);
+                if (url && url.includes('/api/')) {
+                    console.warn('[AUTH] Session expired or unauthorized, redirecting to login...');
+                    window.location.href = '/api/auth/login';
+                }
+            } else if (response.status === 403) {
+                 response.clone().json().then(data => {
+                     alert('🔴 Lỗi Phân quyền: ' + (data.message || 'Truy cập bị từ chối. Vui lòng dùng email nội bộ.'));
+                 }).catch(e => {
+                     alert('🔴 Lỗi Phân quyền: Bạn không có quyền truy cập hệ thống này.');
+                 });
+            }
+            return response;
+        };
+    })();
+    </script>
+</head>
+<body>
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SIDEBAR NAVIGATION (Desktop)                    -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-icon">
+                <svg viewBox="0 0 32 32" fill="none">
+                    <rect x="2" y="2" width="28" height="28" rx="6" fill="url(#brandGrad)" />
+                    <path d="M10 22V10l6 4 6-4v12l-6-4-6 4z" fill="#fff" opacity="0.9"/>
+                    <defs><linearGradient id="brandGrad" x1="0" y1="0" x2="32" y2="32">
+                        <stop stop-color="#3B82F6"/><stop offset="1" stop-color="#06B6D4"/>
+                    </linearGradient></defs>
+                </svg>
+            </div>
+            <div class="brand-text">
+                <span class="brand-name">PnL Forecast</span>
+                <span class="brand-sub">Financial Intelligence</span>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <div class="nav-section-label">Analytics</div>
+            <button class="nav-item active" data-module="dashboard" id="nav-dashboard">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+                    <rect x="14" y="3" width="7" height="4" rx="1.5"/>
+                    <rect x="3" y="14" width="7" height="4" rx="1.5"/>
+                    <rect x="14" y="11" width="7" height="7" rx="1.5"/>
+                </svg>
+                <span>PnL Dashboard</span>
+            </button>
+            <button class="nav-item" data-module="forecast" id="nav-forecast">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M3 20L8 15l4 2 5-7 4 4"/>
+                    <circle cx="8" cy="15" r="1.5"/><circle cx="12" cy="17" r="1.5"/>
+                    <circle cx="17" cy="10" r="1.5"/><circle cx="21" cy="14" r="1.5"/>
+                </svg>
+                <span>Forecast Builder</span>
+            </button>
+            
+            <div class="nav-section-label">Operations</div>
+            <button class="nav-item" data-module="onboarding" id="nav-onboarding">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M12 2v6m0 0l3-3m-3 3L9 5"/>
+                    <rect x="3" y="10" width="18" height="12" rx="2"/>
+                    <path d="M8 15h8M8 18h5"/>
+                </svg>
+                <span>Data Ingestion</span>
+            </button>
+            <button class="nav-item" data-module="newrestaurant" id="nav-newrestaurant">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M3 21h18M5 21V7l7-4 7 4v14"/>
+                    <path d="M9 21v-4h6v4"/>
+                    <line x1="9" y1="10" x2="9" y2="10.01"/>
+                    <line x1="15" y1="10" x2="15" y2="10.01"/>
+                    <line x1="12" y1="10" x2="12" y2="10.01"/>
+                    <line x1="12" y1="14" x2="12" y2="14.01"/>
+                </svg>
+                <span>NH mới & Import</span>
+            </button>
+            <button class="nav-item" data-module="consolidation" id="nav-consolidation">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <rect x="3" y="3" width="18" height="5" rx="1.5"/>
+                    <rect x="3" y="11" width="8" height="5" rx="1.5"/>
+                    <rect x="13" y="11" width="8" height="5" rx="1.5"/>
+                    <rect x="3" y="19" width="18" height="3" rx="1"/>
+                </svg>
+                <span>Consolidation</span>
+            </button>
+            <button class="nav-item" data-module="lockmanager" id="nav-lockmanager">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <rect x="5" y="11" width="14" height="10" rx="2"/>
+                    <path d="M8 11V7a4 4 0 018 0v4"/>
+                    <circle cx="12" cy="16" r="1.5"/>
+                </svg>
+                <span>Lock Manager</span>
+            </button>
+
+            <button class="nav-item" data-module="usermanager" id="nav-usermanager" style="display:none;">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                <span>Phân quyền Users</span>
+            </button>
+
+            <div class="nav-section-label" style="margin-top: 20px;">System Settings</div>
+            <button class="nav-item action-btn-sidebar" id="btnSystemUpdate" style="color: var(--primary-color);">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 4v6h6M23 20v-6h-6M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/>
+                </svg>
+                <span>Cập nhật Hệ thống</span>
+            </button>
+            <button class="nav-item action-btn-sidebar" id="btnSystemReset" style="color: #ff4d4f;">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 6L5 20M5 6l14 14"/>
+                </svg>
+                <span>Reset Data</span>
+            </button>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="sidebar-user">
+                <div class="user-avatar">AL</div>
+                <div class="user-info">
+                    <span class="user-name">Admin User</span>
+                    <span class="user-role">Finance Director</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- MAIN CONTENT AREA                               -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <main class="main-content" id="mainContent">
+
+        <!-- Top Utility Bar -->
+        <header class="topbar" id="topbar">
+            <button class="topbar-menu-btn" id="menuToggle" aria-label="Toggle sidebar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18M3 12h18M3 18h18"/>
+                </svg>
+            </button>
+            <div class="topbar-title" id="topbarTitle">PnL Performance Dashboard</div>
+            <div class="topbar-actions">
+                <div class="topbar-period-select" id="periodSelect">
+                    <button class="period-btn active" data-period="month">Month</button>
+                    <button class="period-btn" data-period="quarter">Quarter</button>
+                    <button class="period-btn" data-period="year">Year</button>
+                </div>
+                <button class="topbar-icon-btn" id="notifBtn" aria-label="Notifications">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                        <path d="M13.73 21a2 2 0 01-3.46 0"/>
+                    </svg>
+                    <span class="notif-dot"></span>
+                </button>
+                <button class="topbar-icon-btn" id="exportBtn" aria-label="Export">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- ══════════════════════════════════════════ -->
+        <!-- MODULE 1: PnL Dashboard                    -->
+        <!-- ══════════════════════════════════════════ -->
+        <section class="module-view active" id="view-dashboard">
+
+            <!-- ── Dashboard Filter Bar ── -->
+            <div class="forecast-toolbar" id="dashFilterBar" style="margin-bottom:16px;">
+                <div class="toolbar-group" id="dbChainGroup">
+                    <label class="toolbar-label">Chuỗi <span id="dbChainCount" class="fc-sel-count hidden">0</span></label>
+                    <div class="fc-multiselect" id="dbChainPicker">
+                        <div class="fc-ms-trigger" id="dbChainTrigger">
+                            <span class="fc-ms-placeholder" id="dbChainPlaceholder">-- Tất cả chuỗi --</span>
+                            <div class="fc-ms-tags" id="dbChainTags"></div>
+                            <svg class="fc-ms-arrow" viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                        </div>
+                        <div class="fc-ms-dropdown hidden" id="dbChainDropdown">
+                            <div class="fc-ms-search-wrap">
+                                <input type="text" class="fc-ms-search" id="dbChainSearch" placeholder="Tìm chuỗi...">
+                                <button class="fc-ms-clear-all" id="dbChainClearAll">Xóa hết</button>
+                            </div>
+                            <div class="fc-ms-options" id="dbChainOptions">
+                                <div class="fc-ms-empty">Đang tải dữ liệu...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="toolbar-group" id="dbRestGroup">
+                    <label class="toolbar-label">Nhà hàng <span id="dbRestCount" class="fc-sel-count hidden">0</span></label>
+                    <div class="fc-multiselect" id="dbRestPicker">
+                        <div class="fc-ms-trigger" id="dbRestTrigger">
+                            <span class="fc-ms-placeholder" id="dbRestPlaceholder">-- Tất cả nhà hàng --</span>
+                            <div class="fc-ms-tags" id="dbRestTags"></div>
+                            <svg class="fc-ms-arrow" viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                        </div>
+                        <div class="fc-ms-dropdown hidden" id="dbRestDropdown">
+                            <div class="fc-ms-search-wrap">
+                                <input type="text" class="fc-ms-search" id="dbRestSearch" placeholder="Tìm nhà hàng...">
+                                <button class="fc-ms-clear-all" id="dbRestClearAll">Xóa hết</button>
+                            </div>
+                            <div class="fc-ms-options" id="dbRestOptions">
+                                <div class="fc-ms-empty">Chọn chuỗi trước</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="toolbar-group">
+                    <label class="toolbar-label">Kỳ báo cáo</label>
+                    <div class="fc-multiselect" style="min-width:140px;">
+                        <select class="toolbar-select" id="dbDatekeySelect" style="min-width:140px;">
+                            <option value="">-- Chọn kỳ --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="toolbar-group" style="margin-left:auto;">
+                    <label class="toolbar-label">&nbsp;</label>
+                    <button class="btn btn-primary" id="btnDashRefresh" style="height:38px;gap:6px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M1 4v6h6M23 20v-6h-6M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+                        Cập nhật
+                    </button>
+                </div>
+            </div>
+
+            <!-- KPI Summary Cards -->
+            <div class="kpi-row" id="kpiRow">
+                <div class="kpi-card" id="kpi-revenue">
+                    <div class="kpi-header">
+                        <span class="kpi-label">Doanh thu thuần</span>
+                        <span class="kpi-badge badge-up" id="kpi-revenue-badge">+4.7%</span>
+                    </div>
+                    <div class="kpi-value" id="kpi-revenue-val">—</div>
+                    <div class="kpi-sub" id="kpi-revenue-sub">Chưa có dữ liệu</div>
+                    <div class="kpi-spark" id="sparkRevenue"></div>
+                </div>
+                <div class="kpi-card" id="kpi-cogs">
+                    <div class="kpi-header">
+                        <span class="kpi-label">Giá vốn (CP01)</span>
+                        <span class="kpi-badge badge-down" id="kpi-cogs-badge">—</span>
+                    </div>
+                    <div class="kpi-value" id="kpi-cogs-val">—</div>
+                    <div class="kpi-sub" id="kpi-cogs-sub">Chưa có dữ liệu</div>
+                    <div class="kpi-spark" id="sparkCogs"></div>
+                </div>
+                <div class="kpi-card" id="kpi-ebitda">
+                    <div class="kpi-header">
+                        <span class="kpi-label">EBITDA</span>
+                        <span class="kpi-badge badge-up" id="kpi-ebitda-badge">—</span>
+                    </div>
+                    <div class="kpi-value" id="kpi-ebitda-val">—</div>
+                    <div class="kpi-sub" id="kpi-ebitda-sub">Chưa có dữ liệu</div>
+                    <div class="kpi-spark" id="sparkEbitda"></div>
+                </div>
+                <div class="kpi-card" id="kpi-netprofit">
+                    <div class="kpi-header">
+                        <span class="kpi-label">Lãi ròng (LNST)</span>
+                        <span class="kpi-badge badge-up" id="kpi-netprofit-badge">—</span>
+                    </div>
+                    <div class="kpi-value" id="kpi-netprofit-val">—</div>
+                    <div class="kpi-sub" id="kpi-netprofit-sub">Chưa có dữ liệu</div>
+                    <div class="kpi-spark" id="sparkNet"></div>
+                </div>
+            </div>
+
+            <!-- Insight Banners -->
+            <div class="insight-row">
+                <div class="insight-card insight-warning" id="insightOutlier">
+                    <div class="insight-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                    </div>
+                    <div class="insight-body">
+                        <div class="insight-title">Phát hiện Chi phí bất thường</div>
+                        <div class="insight-text">CP05 (Marketing) tại <strong>Miền Nam</strong> vượt 23% so với trung bình 3 tháng gần nhất. Cần xem xét phân bổ Q2.</div>
+                    </div>
+                    <button class="insight-action">Xem xét →</button>
+                </div>
+                <div class="insight-card insight-success" id="insightUpside">
+                    <div class="insight-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+                            <polyline points="17 6 23 6 23 12"/>
+                        </svg>
+                    </div>
+                    <div class="insight-body">
+                        <div class="insight-title">Cơ hội Tăng trưởng</div>
+                        <div class="insight-text">DT0102 (App giao hàng) tại <strong>Unit #12 Saigon Central</strong> tăng +18% MoM. Nên tăng công suất phục vụ.</div>
+                    </div>
+                    <button class="insight-action">Phân tích →</button>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="charts-row">
+                <div class="chart-card chart-large" id="chartVolumeMargin">
+                    <div class="chart-header">
+                        <h3 class="chart-title">Revenue vs. Margin Performance</h3>
+                        <div class="chart-legend">
+                            <span class="legend-item"><span class="legend-dot dot-blue"></span>Actual Revenue</span>
+                            <span class="legend-item"><span class="legend-dot dot-cyan"></span>Forecast</span>
+                            <span class="legend-item"><span class="legend-dot dot-emerald"></span>Margin %</span>
+                        </div>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="canvasVolumeMargin"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card chart-small" id="chartExpenseBreakdown">
+                    <div class="chart-header">
+                        <h3 class="chart-title">Expense Breakdown</h3>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="canvasExpenseBreakdown"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PnL Data Table -->
+            <div class="table-card" id="pnlTableCard">
+                <div class="table-header">
+                    <h3 class="table-title">Báo cáo Lãi &amp; Lỗ (P&amp;L)</h3>
+                    <div class="table-controls">
+                        <span id="dbFilterDesc" style="font-size:0.78rem;color:var(--text-muted);">Tất cả đơn vị</span>
+                    </div>
+                </div>
+                <div class="table-scroll">
+                    <table class="pnl-table" id="pnlTable">
+                        <thead>
+                            <tr>
+                                <th class="col-code">Mã</th>
+                                <th class="col-item">Chỉ tiêu</th>
+                                <th class="col-actual">Thực tế</th>
+                                <th class="col-forecast">Dự báo</th>
+                                <th class="col-variance">Chênh lệch ($)</th>
+                                <th class="col-variance-pct">CL %</th>
+                                <th class="col-prior">Kỳ trước</th>
+                                <th class="col-yoy">YoY %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pnlTableBody">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Trend Chart -->
+            <div class="chart-card chart-full" id="chartTrend">
+                <div class="chart-header">
+                    <h3 class="chart-title">12-Month Rolling Trend</h3>
+                    <div class="chart-legend">
+                        <span class="legend-item"><span class="legend-dot dot-blue"></span>Actual</span>
+                        <span class="legend-item"><span class="legend-dot dot-projection"></span>Projection</span>
+                    </div>
+                </div>
+                <div class="chart-body chart-body-lg">
+                    <canvas id="canvasTrend"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════ -->
+        <!-- MODULE 2: Forecast Formula Builder          -->
+        <!-- ══════════════════════════════════════════ -->
+        <section class="module-view" id="view-forecast">
+            <div class="module-intro">
+                <h2 class="module-heading">Forecast Builder</h2>
+                <p class="module-desc">Dự báo chi phí & doanh thu dựa trên dữ liệu thực tế. Chọn chuỗi/nhà hàng và kỳ dự báo.</p>
+            </div>
+
+        <!-- ── Forecast Toolbar ── -->
+            <div class="forecast-toolbar" id="forecastToolbar">
+                <div class="toolbar-group" id="fcChainGroup">
+                    <label class="toolbar-label">Chuỗi <span id="fcChainCount" class="fc-sel-count hidden">0</span></label>
+                    <div class="fc-multiselect" id="fcChainPicker">
+                        <div class="fc-ms-trigger" id="fcChainTrigger">
+                            <span class="fc-ms-placeholder" id="fcChainPlaceholder">-- Chọn chuỗi --</span>
+                            <div class="fc-ms-tags" id="fcChainTags"></div>
+                            <svg class="fc-ms-arrow" viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                        </div>
+                        <div class="fc-ms-dropdown hidden" id="fcChainDropdown">
+                            <div class="fc-ms-search-wrap">
+                                <input type="text" class="fc-ms-search" id="fcChainSearch" placeholder="Tìm chuỗi...">
+                                <button class="fc-ms-select-all" id="fcChainSelectAll" title="Chọn / bỏ chọn tất cả">☑ Tất cả</button>
+                                <button class="fc-ms-clear-all" id="fcChainClearAll">Xóa hết</button>
+                            </div>
+                            <div class="fc-ms-options" id="fcChainOptions">
+                                <div class="fc-ms-empty">Đang tải dữ liệu...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="toolbar-group" id="fcRestaurantGroup">
+                    <label class="toolbar-label">Nhà hàng <span id="fcRestCount" class="fc-sel-count hidden">0</span></label>
+                    <div class="fc-multiselect" id="fcRestPicker">
+                        <div class="fc-ms-trigger" id="fcRestTrigger">
+                            <span class="fc-ms-placeholder" id="fcRestPlaceholder">-- Chọn chuỗi trước --</span>
+                            <div class="fc-ms-tags" id="fcRestTags"></div>
+                            <svg class="fc-ms-arrow" viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                        </div>
+                        <div class="fc-ms-dropdown hidden" id="fcRestDropdown">
+                            <div class="fc-ms-search-wrap">
+                                <input type="text" class="fc-ms-search" id="fcRestSearch" placeholder="Tìm nhà hàng...">
+                                <button class="fc-ms-select-all" id="fcRestSelectAll" title="Chọn / bỏ chọn tất cả">☑ Tất cả</button>
+                                <button class="fc-ms-clear-all" id="fcRestClearAll">Xóa hết</button>
+                            </div>
+                            <div class="fc-ms-options" id="fcRestOptions">
+                                <div class="fc-ms-empty">Chọn chuỗi trước</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="toolbar-group">
+                    <label class="toolbar-label">Kỳ dự báo</label>
+                    <div class="horizon-selector" id="horizonSelector">
+                        <button class="horizon-btn active" data-horizon="1">1 tháng</button>
+                        <button class="horizon-btn" data-horizon="3">3 tháng</button>
+                        <button class="horizon-btn" data-horizon="6">6 tháng</button>
+                        <button class="horizon-btn" data-horizon="12">1 năm</button>
+                    </div>
+                </div>
+                <div class="toolbar-group">
+                    <button class="btn btn-primary btn-run-forecast" id="btnRunForecast">
+                        <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd"/></svg>
+                        Chạy Forecast
+                    </button>
+                </div>
+            </div>
+
+
+            <!-- ── Status Banner ── -->
+            <div class="forecast-status hidden" id="forecastStatus">
+                <div class="status-icon">⏳</div>
+                <div class="status-text" id="forecastStatusText">Đang tải dữ liệu...</div>
+            </div>
+
+            <div class="forecast-layout">
+                <!-- ── Line Item Selector ── -->
+                <div class="forecast-sidebar-panel">
+                    <div class="panel-header">
+                        <h3 class="panel-title">Line Items</h3>
+                        <input type="search" class="panel-search" id="forecastSearch" placeholder="Tìm mã / tên...">
+                    </div>
+                    <div class="line-items-list" id="lineItemsList">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- ── Formula Canvas ── -->
+                <div class="forecast-main-panel">
+                    <div class="formula-canvas" id="formulaCanvas">
+                        <div class="formula-header">
+                            <h3 class="formula-title" id="formulaTitle">Chọn một Line Item</h3>
+                            <span class="formula-tag" id="formulaTag">—</span>
+                        </div>
+                        
+                        <div class="formula-config" id="formulaConfig">
+                            <div class="config-group">
+                                <label class="config-label">Phương pháp Forecast</label>
+                                <div class="method-selector" id="methodSelector">
+                                    <button class="method-btn active" data-method="historical">
+                                        <svg viewBox="0 0 20 20" fill="currentColor" class="method-icon"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/></svg>
+                                        Historical Growth
+                                    </button>
+                                    <button class="method-btn" data-method="fixed">
+                                        <svg viewBox="0 0 20 20" fill="currentColor" class="method-icon"><path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z"/><path fill-rule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clip-rule="evenodd"/></svg>
+                                        Fixed Value
+                                    </button>
+                                    <button class="method-btn" data-method="anchor">
+                                        <svg viewBox="0 0 20 20" fill="currentColor" class="method-icon"><path fill-rule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z" clip-rule="evenodd"/></svg>
+                                        Base Anchor
+                                    </button>
+                                    <button class="method-btn" data-method="percent_revenue">
+                                        <svg viewBox="0 0 20 20" fill="currentColor" class="method-icon"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zM5.5 8a2.5 2.5 0 115 0 2.5 2.5 0 01-5 0zM10.154 13.064l1.3-4.55a.75.75 0 111.442.412l-1.3 4.55a.75.75 0 01-1.442-.412zM14.5 13.5a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"/></svg>
+                                        % / Doanh thu
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Historical Growth Options -->
+                            <div class="config-params" id="paramsHistorical">
+                                <div class="config-group">
+                                    <label class="config-label">Loại tăng trưởng</label>
+                                    <div class="toggle-group">
+                                        <button class="toggle-btn active" data-growth="mom">MoM</button>
+                                        <button class="toggle-btn" data-growth="yoy">YoY</button>
+                                    </div>
+                                </div>
+                                <div class="config-group">
+                                    <label class="config-label">Tỷ lệ tăng trưởng (%)</label>
+                                    <div class="slider-input">
+                                        <input type="range" class="range-slider" id="growthRate" min="-20" max="30" value="5" step="0.5">
+                                        <span class="slider-value" id="growthRateValue">5.0%</span>
+                                    </div>
+                                </div>
+                                <div class="config-group">
+                                    <label class="config-label">Số kỳ lùi lại (Lookback)</label>
+                                    <input type="number" class="config-input" id="lookbackPeriods" value="3" min="1" max="12">
+                                </div>
+                            </div>
+
+                            <!-- Fixed Value Options -->
+                            <div class="config-params hidden" id="paramsFixed">
+                                <div class="config-group">
+                                    <label class="config-label">Giá trị cố định</label>
+                                    <input type="text" class="config-input" id="fixedAmount" value="100,000" placeholder="Nhập số tiền...">
+                                </div>
+                            </div>
+
+                            <!-- Base Anchor Options -->
+                            <div class="config-params hidden" id="paramsAnchor">
+                                <div class="config-group">
+                                    <label class="config-label">Kỳ mỏ neo</label>
+                                    <select class="config-select" id="anchorPeriod">
+                                        <!-- Populated dynamically -->
+                                    </select>
+                                </div>
+                                <div class="config-group">
+                                    <label class="config-label">Hệ số nhân</label>
+                                    <div class="slider-input">
+                                        <input type="range" class="range-slider" id="anchorMultiplier" min="0.5" max="2.0" value="1.05" step="0.01">
+                                        <span class="slider-value" id="anchorMultiplierValue">×1.05</span>
+                                    </div>
+                                </div>
+                                <div class="config-group">
+                                    <label class="config-label">Khoản đệm (Buffer)</label>
+                                    <input type="text" class="config-input" id="anchorBuffer" value="0" placeholder="Buffer...">
+                                </div>
+                            </div>
+
+                            <!-- % Revenue Options -->
+                            <div class="config-params hidden" id="paramsPercentRev">
+                                <div class="config-group">
+                                    <label class="config-label">Kỳ lấy tỷ lệ (Chi phí / DTT)</label>
+                                    <select class="config-select" id="percentRevPeriod">
+                                        <!-- Populated dynamically -->
+                                    </select>
+                                </div>
+                                <div class="config-group">
+                                    <label class="config-label">Tăng trưởng DT dự kiến (%)</label>
+                                    <div class="slider-input">
+                                        <input type="range" class="range-slider" id="revGrowthRate" min="-10" max="20" value="5" step="0.5">
+                                        <span class="slider-value" id="revGrowthRateValue">5.0%</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Formula Display -->
+                            <div class="formula-display" id="formulaDisplay">
+                                <div class="formula-visual">
+                                    <span class="formula-el formula-base">Chọn line item để xem công thức</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="formula-actions">
+                            <button class="btn btn-outline" id="resetFormula">Reset</button>
+                            <button class="btn btn-primary" id="applyFormula">Áp dụng</button>
+                        </div>
+                    </div>
+
+                    <!-- ── Forecast P&L Table (matches Dashboard format) ── -->
+                    <div class="table-card" id="forecastPnlCard" style="margin-top:1.5rem;">
+                        <div class="table-header">
+                            <h3 class="table-title">🔮 Báo cáo P&L Forecast</h3>
+                            <div class="table-controls">
+                                <span id="fcPnlFilterDesc" style="font-size:0.78rem;color:var(--text-muted);">Nhấn "Chạy Forecast" để tạo dự báo</span>
+                            </div>
+                        </div>
+                        <div class="table-scroll">
+                            <table class="pnl-table" id="forecastPnlTable">
+                                <thead>
+                                    <tr id="forecastPnlThead">
+                                        <th class="col-code">Mã</th>
+                                        <th class="col-item">Chỉ tiêu</th>
+                                        <th class="col-forecast">🔮 Dự báo</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="forecastPnlTableBody">
+                                    <tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:2.5rem;">
+                                        <div style="font-size:2rem;margin-bottom:0.5rem;">📊</div>
+                                        Nhấn <strong>"Chạy Forecast"</strong> để tạo báo cáo P&L dự báo
+                                    </td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════ -->
+        <!-- MODULE 3: Onboarding & Data Ingestion       -->
+        <!-- ══════════════════════════════════════════ -->
+        <section class="module-view" id="view-onboarding">
+            <div class="module-intro">
+                <h2 class="module-heading">Data Ingestion & Onboarding</h2>
+                <p class="module-desc">Import financial data for new entities. Follow the 3-phase wizard below.</p>
+            </div>
+
+            <!-- Step Indicator -->
+            <div class="stepper" id="onboardStepper">
+                <div class="step active" data-step="1">
+                    <div class="step-circle">1</div>
+                    <div class="step-label">Data Upload</div>
+                </div>
+                <div class="step-line"></div>
+                <div class="step" data-step="2">
+                    <div class="step-circle">2</div>
+                    <div class="step-label">Column Mapping</div>
+                </div>
+                <div class="step-line"></div>
+                <div class="step" data-step="3">
+                    <div class="step-circle">3</div>
+                    <div class="step-label">Validation</div>
+                </div>
+            </div>
+
+            <!-- Phase 1: Upload -->
+            <div class="onboard-phase active" id="phase1">
+                <div class="upload-zone" id="uploadZone">
+                    <div class="upload-icon">
+                        <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="12" y="8" width="40" height="48" rx="4"/>
+                            <path d="M32 24v16M24 32l8-8 8 8"/>
+                            <path d="M20 44h24" stroke-dasharray="4 2"/>
+                        </svg>
+                    </div>
+                    <div class="upload-text">
+                        <h3>Drop your files here</h3>
+                        <p>Supports CSV and XLSX formats up to 50MB</p>
+                    </div>
+                    <button class="btn btn-outline upload-browse" id="browseBtn">Browse Files</button>
+                    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" hidden multiple>
+                </div>
+                <div class="uploaded-files hidden" id="uploadedFiles">
+                    <h4 class="uploaded-title">Uploaded Files</h4>
+                    <div class="file-list" id="fileList"></div>
+                    <button class="btn btn-primary" id="proceedMapping">Continue to Mapping →</button>
+                </div>
+            </div>
+
+            <!-- Phase 2: Column Mapping -->
+            <div class="onboard-phase" id="phase2">
+                <div class="mapping-layout">
+                    <div class="mapping-source">
+                        <h4 class="mapping-title">Source Columns</h4>
+                        <div class="mapping-cols" id="sourceCols">
+                            <div class="mapping-item draggable" draggable="true" data-col="date">📅 Date</div>
+                            <div class="mapping-item draggable" draggable="true" data-col="account_code">🔢 Account Code</div>
+                            <div class="mapping-item draggable" draggable="true" data-col="account_name">📝 Account Name</div>
+                            <div class="mapping-item draggable" draggable="true" data-col="debit">💰 Debit</div>
+                            <div class="mapping-item draggable" draggable="true" data-col="credit">💳 Credit</div>
+                            <div class="mapping-item draggable" draggable="true" data-col="entity">🏢 Entity</div>
+                            <div class="mapping-item draggable" draggable="true" data-col="description">📄 Description</div>
+                        </div>
+                    </div>
+                    <div class="mapping-arrow">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    </div>
+                    <div class="mapping-target">
+                        <h4 class="mapping-title">Ledger Fields</h4>
+                        <div class="mapping-slots" id="targetSlots">
+                            <div class="mapping-slot" data-target="period"><span class="slot-label">Period</span><span class="slot-drop">Drop here</span></div>
+                            <div class="mapping-slot" data-target="gl_code"><span class="slot-label">GL Code</span><span class="slot-drop">Drop here</span></div>
+                            <div class="mapping-slot" data-target="gl_name"><span class="slot-label">GL Name</span><span class="slot-drop">Drop here</span></div>
+                            <div class="mapping-slot" data-target="amount_dr"><span class="slot-label">Debit Amount</span><span class="slot-drop">Drop here</span></div>
+                            <div class="mapping-slot" data-target="amount_cr"><span class="slot-label">Credit Amount</span><span class="slot-drop">Drop here</span></div>
+                            <div class="mapping-slot" data-target="entity_id"><span class="slot-label">Entity ID</span><span class="slot-drop">Drop here</span></div>
+                            <div class="mapping-slot" data-target="memo"><span class="slot-label">Memo</span><span class="slot-drop">Drop here</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="phase-actions">
+                    <button class="btn btn-ghost" id="backToUpload">← Back</button>
+                    <button class="btn btn-primary" id="proceedValidation">Continue to Validation →</button>
+                </div>
+            </div>
+
+            <!-- Phase 3: Validation -->
+            <div class="onboard-phase" id="phase3">
+                <div class="validation-summary" id="validationSummary">
+                    <div class="valid-stat valid-ok">
+                        <div class="valid-count" id="validCount">847</div>
+                        <div class="valid-label">Verified Rows</div>
+                    </div>
+                    <div class="valid-stat valid-warn">
+                        <div class="valid-count" id="warnCount">23</div>
+                        <div class="valid-label">Warnings</div>
+                    </div>
+                    <div class="valid-stat valid-err">
+                        <div class="valid-count" id="errCount">5</div>
+                        <div class="valid-label">Errors</div>
+                    </div>
+                </div>
+                <div class="validation-grid" id="validationGrid">
+                    <table class="mini-table validation-table">
+                        <thead>
+                            <tr>
+                                <th>Row</th>
+                                <th>Status</th>
+                                <th>GL Code</th>
+                                <th>Amount</th>
+                                <th>Issue</th>
+                            </tr>
+                        </thead>
+                        <tbody id="validationBody">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="phase-actions">
+                    <button class="btn btn-ghost" id="backToMapping">← Back</button>
+                    <button class="btn btn-primary" id="finalizeImport">✓ Finalize Import</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════ -->
+        <!-- MODULE: New Restaurant & Data Import      -->
+        <!-- ══════════════════════════════════════════ -->
+        <section class="module-view" id="view-newrestaurant">
+            <div class="module-intro">
+                <h2 class="module-heading">Khai báo Nhà hàng mới & Import dữ liệu</h2>
+                <p class="module-desc">Đăng ký mã nhà hàng mới chưa có trên database, import số liệu PnL và hợp nhất vào báo cáo Forecast.</p>
+            </div>
+
+            <div class="nr-layout">
+                <!-- ── Panel 1: Registration Form ── -->
+                <div class="nr-panel nr-register-panel">
+                    <div class="nr-panel-header">
+                        <h3 class="nr-panel-title">
+                            <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm1 11H9v-2h2v2zm0-4H9V5h2v4z"/></svg>
+                            Khai báo NH mới
+                        </h3>
+                    </div>
+
+                    <div class="nr-form">
+                        <div class="nr-form-group">
+                            <label class="nr-label">Mã nhà hàng (PC) <span class="required">*</span></label>
+                            <input type="text" class="nr-input" id="nrPcCode" placeholder="VD: 10GG5001" maxlength="20">
+                            <span class="nr-hint">4 ký tự đầu = mã chuỗi. VD: 10GG = chuỗi GG loại 10</span>
+                        </div>
+
+                        <div class="nr-form-row">
+                            <div class="nr-form-group">
+                                <label class="nr-label">Chuỗi (tự nhận diện)</label>
+                                <input type="text" class="nr-input nr-readonly" id="nrChainCode" readonly placeholder="—">
+                            </div>
+                            <div class="nr-form-group">
+                                <label class="nr-label">Tên nhà hàng</label>
+                                <input type="text" class="nr-input" id="nrName" placeholder="VD: GG Outlet Tân Sơn Nhất">
+                            </div>
+                        </div>
+
+                        <div class="nr-form-row">
+                            <div class="nr-form-group">
+                                <label class="nr-label">Khu vực</label>
+                                <select class="nr-select" id="nrRegion">
+                                    <option value="">Chọn khu vực</option>
+                                    <option value="north">Miền Bắc</option>
+                                    <option value="central">Miền Trung</option>
+                                    <option value="south">Miền Nam</option>
+                                </select>
+                            </div>
+                            <div class="nr-form-group">
+                                <label class="nr-label">Ngày khai trương</label>
+                                <input type="month" class="nr-input" id="nrOpenDate">
+                            </div>
+                        </div>
+
+                        <div class="nr-form-group">
+                            <label class="nr-label">Ghi chú</label>
+                            <textarea class="nr-textarea" id="nrNotes" rows="2" placeholder="Ghi chú thêm..."></textarea>
+                        </div>
+
+                        <button class="btn btn-primary nr-register-btn" id="btnRegisterNR">
+                            <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/></svg>
+                            Đăng ký NH mới
+                        </button>
+                    </div>
+
+                    <!-- Registered list -->
+                    <div class="nr-registered" id="nrRegisteredList">
+                        <h4 class="nr-sub-title">NH đã khai báo</h4>
+                        <div class="nr-list" id="nrListBody">
+                            <div class="nr-empty">Chưa có nhà hàng nào được khai báo</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Panel 2: Data Import ── -->
+                <div class="nr-panel nr-import-panel">
+                    <div class="nr-panel-header">
+                        <h3 class="nr-panel-title">
+                            <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18"><path d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z"/></svg>
+                            Import số liệu PnL
+                        </h3>
+                    </div>
+
+                    <div class="nr-import-form">
+                        <div class="nr-form-group">
+                            <label class="nr-label">Chọn nhà hàng <span class="required">*</span></label>
+                            <select class="nr-select" id="nrImportTarget">
+                                <option value="">— Chọn NH đã khai báo —</option>
+                            </select>
+                        </div>
+
+                        <div class="nr-form-group">
+                            <label class="nr-label">Kỳ dữ liệu <span style="font-weight:normal;color:#666;font-size:0.8em">(Bỏ qua nếu dùng template tải về)</span></label>
+                            <input type="month" class="nr-input" id="nrImportPeriod">
+                        </div>
+
+                        <div class="nr-form-group" style="text-align: right; margin-bottom: 8px;">
+                            <a href="/api/template/import_pnl" class="btn btn-outline btn-sm" id="btnDownloadTemplate" target="_blank" style="display:inline-flex; align-items:center; gap:6px;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                Tải Template (Hỗ trợ Nhiều kỳ)
+                            </a>
+                        </div>
+
+                        <div class="nr-upload-zone" id="nrUploadZone">
+                            <div class="nr-upload-icon">
+                                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48">
+                                    <rect x="8" y="6" width="32" height="36" rx="3"/>
+                                    <path d="M24 18v12M18 24l6-6 6 6"/>
+                                </svg>
+                            </div>
+                            <div class="nr-upload-text">
+                                <strong>Kéo thả file hoặc click để chọn</strong>
+                                <span>Hỗ trợ CSV, XLSX — Cột giá trị hoặc N Kỳ (202601, 202602)</span>
+                            </div>
+                            <input type="file" id="nrFileInput" accept=".csv,.xlsx,.xls" hidden>
+                        </div>
+
+                        <!-- Import Preview -->
+                        <div class="nr-import-preview hidden" id="nrImportPreview">
+                            <div class="nr-preview-header">
+                                <h4>Xem trước dữ liệu import</h4>
+                                <span class="nr-row-count" id="nrRowCount">0 dòng</span>
+                            </div>
+                            <div class="nr-preview-table-wrap">
+                                <table class="mini-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Line Item</th>
+                                            <th>Tên chỉ tiêu</th>
+                                            <th>Kỳ dữ liệu</th>
+                                            <th>Giá trị</th>
+                                            <th>Trạng thái</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="nrPreviewBody"></tbody>
+                                </table>
+                            </div>
+                            <div class="nr-import-actions">
+                                <button class="btn btn-outline" id="btnClearImport">Xóa</button>
+                                <button class="btn btn-primary" id="btnConfirmImport">
+                                    <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                    Xác nhận Import
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Consolidated View ── -->
+            <div class="nr-consolidated" id="nrConsolidated">
+                <div class="nr-consol-header">
+                    <h3 class="nr-consol-title">
+                        <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18"><path d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"/></svg>
+                        Báo cáo PnL hợp nhất (DB + NH mới)
+                    </h3>
+                    <div class="nr-consol-actions">
+                        <select class="toolbar-select" id="nrConsolPeriod">
+                            <option value="">Chọn kỳ</option>
+                        </select>
+                        <button class="btn btn-outline btn-sm" id="btnSyncDB" title="Cập nhật dữ liệu từ Database">
+                            <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg>
+                            Làm mới
+                        </button>
+                        <button class="btn btn-outline btn-sm" id="btnExportConsol">
+                            <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                            Export
+                        </button>
+                    </div>
+                </div>
+                <div class="nr-consol-table-wrap">
+                    <table class="mini-table" id="nrConsolTable">
+                        <thead>
+                            <tr>
+                                <th>Line Item</th>
+                                <th>Tên chỉ tiêu</th>
+                                <th>DB (Thực tế)</th>
+                                <th>NH mới (Import)</th>
+                                <th>Tổng hợp nhất</th>
+                            </tr>
+                        </thead>
+                        <tbody id="nrConsolBody">
+                            <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem">Import dữ liệu NH mới để xem báo cáo hợp nhất</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════ -->
+        <!-- MODULE 4: Forecast Consolidation & Adjustment -->
+        <!-- ══════════════════════════════════════════ -->
+        <section class="module-view" id="view-consolidation">
+            <div class="module-intro">
+                <h2 class="module-heading">📋 Consolidation — Xem & Điều chỉnh Forecast</h2>
+                <p class="module-desc">Xem kết quả Forecast theo chuỗi/nhà hàng. Điều chỉnh số liệu và lưu thành báo cáo final.</p>
+            </div>
+
+            <!-- Status Bar -->
+            <div class="consol-status-bar" id="consolStatusBar">
+                <div class="consol-status-icon">⚠️</div>
+                <div class="consol-status-text" id="consolStatusText">Chưa có dữ liệu Forecast. Vui lòng chạy Forecast Builder trước.</div>
+            </div>
+
+            <!-- Filter & Actions Bar -->
+            <div class="consol-toolbar" id="consolToolbar" style="display:none">
+                <!-- View Mode Toggle -->
+                <div class="consol-view-toggle">
+                    <button class="consol-view-btn active" data-view="all" id="consolViewAll">📊 Tổng hợp</button>
+                    <button class="consol-view-btn" data-view="chain" id="consolViewChain">🏢 Theo chuỗi</button>
+                    <button class="consol-view-btn" data-view="restaurant" id="consolViewRest">🍴 Theo NH</button>
+                </div>
+
+                <!-- Filter selector (shown when chain/restaurant view) -->
+                <div class="consol-filter-wrap" id="consolFilterWrap" style="display:none">
+                    <label class="consol-filter-label">Chọn:</label>
+                    <select class="consol-filter-select" id="consolFilterSelect">
+                        <option value="">-- Chọn --</option>
+                    </select>
+                </div>
+
+                <!-- Action buttons -->
+                <div class="consol-actions">
+                    <button class="btn btn-sm btn-outline" id="consolResetAdj" title="Xóa tất cả điều chỉnh">
+                        🔄 Reset
+                    </button>
+                    <button class="btn btn-sm btn-primary" id="consolSaveFinal" title="Lưu báo cáo final">
+                        💾 Lưu Final
+                    </button>
+                    <button class="btn btn-sm btn-outline" id="consolExport" title="Export Excel">
+                        📥 Export
+                    </button>
+                </div>
+            </div>
+
+            <!-- Adjustment Summary -->
+            <div class="consol-adj-summary" id="consolAdjSummary" style="display:none">
+                <span class="adj-badge" id="adjCount">0 điều chỉnh</span>
+                <span class="adj-impact" id="adjImpact"></span>
+            </div>
+
+            <!-- Editable P&L Table -->
+            <div class="consol-table-wrap" id="consolTableWrap" style="display:none">
+                <table class="consol-table" id="consolTable">
+                    <thead>
+                        <tr id="consolThead">
+                            <th class="col-code">Mã</th>
+                            <th class="col-item">Chỉ tiêu</th>
+                            <!-- Dynamic period columns added by JS -->
+                        </tr>
+                    </thead>
+                    <tbody id="consolTbody">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Adjustment Log -->
+            <div class="consol-log-panel" id="consolLogPanel" style="display:none">
+                <div class="consol-log-header">
+                    <h3 class="consol-log-title">📝 Nhật ký điều chỉnh</h3>
+                    <span class="consol-log-count" id="consolLogCount">0</span>
+                </div>
+                <div class="consol-log-list" id="consolLogList">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Saved Reports -->
+            <div class="consol-saved-panel" id="consolSavedPanel">
+                <div class="consol-log-header">
+                    <h3 class="consol-log-title">📁 Báo cáo đã lưu</h3>
+                    <span class="consol-log-count" id="savedReportCount">0</span>
+                </div>
+                <div class="consol-saved-list" id="consolSavedList">
+                    <div class="consol-empty-state">Chưa có báo cáo nào được lưu.</div>
+                </div>
+            </div>
+
+            <!-- View Modal (Popup) -->
+            <div id="viewReportModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); align-items:center; justify-content:center; z-index:9999;">
+                <div style="background:#1e293b; color:#f8fafc; padding:24px; border-radius:12px; width:95%; max-width:1200px; max-height:95vh; display:flex; flex-direction:column; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                        <div>
+                            <h3 id="viewReportTitle" style="margin:0; font-size:1.5rem; color:#f8fafc;">Xem báo cáo</h3>
+                            <p id="viewReportSubtitle" style="margin:6px 0 0 0; font-size:0.9rem; color:#94a3b8;"></p>
+                        </div>
+                        <button class="btn btn-outline btn-sm" style="color:#f8fafc; border-color:#475569; padding:8px 16px;" onclick="document.getElementById('viewReportModal').style.display='none'">✖ Đóng</button>
+                    </div>
+                    <div style="overflow:auto; flex:1; border:1px solid #334155; border-radius:8px; background:#0f172a;">
+                        <table class="data-table" style="width:100%; white-space:nowrap; border-collapse:collapse; font-size:0.875rem;">
+                            <thead id="viewReportThead" style="position:sticky; top:0; z-index:2; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></thead>
+                            <tbody id="viewReportTbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════ -->
+        <!-- MODULE: Lock Manager                       -->
+        <!-- ══════════════════════════════════════════ -->
+        <section class="module-view" id="view-lockmanager">
+            <div class="module-intro">
+                <h2 class="module-heading">🔒 Lock Manager — Quản lý trạng thái Nhà hàng</h2>
+                <p class="module-desc">Danh sách nhà hàng được tải từ database và lưu cục bộ. Khai báo lịch khóa/mở khóa không ảnh hưởng database. Chỉ nhà hàng <strong>ACTIVE</strong> hoặc <strong>UNLOCKED</strong> mới được chạy Forecast.</p>
+            </div>
+
+            <!-- DB Connection Status -->
+            <div class="lock-db-statusbar">
+                <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" style="flex-shrink:0">
+                    <path d="M3 12v3c0 1.657 3.134 3 7 3s7-1.343 7-3v-3c0 1.657-3.134 3-7 3s-7-1.343-7-3z"/>
+                    <path d="M3 7v3c0 1.657 3.134 3 7 3s7-1.343 7-3V7c0 1.657-3.134 3-7 3S3 8.657 3 7z"/>
+                    <path d="M17 5c0 1.657-3.134 3-7 3S3 6.657 3 5s3.134-3 7-3 7 1.343 7 3z"/>
+                </svg>
+                <span id="lockDbStatus" class="lock-db-status db-loading">Đang kết nối database...</span>
+                <button class="btn-db-refresh" id="btnRefreshDb" title="Làm mới từ DB">
+                    <svg viewBox="0 0 20 20" fill="currentColor" width="13" height="13">
+                        <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+                    </svg>
+                    Refresh từ DB
+                </button>
+            </div>
+
+            <!-- Summary Bar -->
+            <div class="lock-summary-bar" id="lockSummary"></div>
+
+            <!-- Toolbar -->
+            <div class="lock-toolbar">
+                <div class="lock-toolbar-left">
+                    <input type="text" class="lock-filter-input" id="lockFilterInput" placeholder="🔍 Tìm theo mã NH...">
+                    <!-- Status filter chips -->
+                    <div class="lock-chip-group">
+                        <button class="lock-filter-chip active" data-status="">Tất cả</button>
+                        <button class="lock-filter-chip" data-status="ACTIVE">✅ Active</button>
+                        <button class="lock-filter-chip" data-status="LOCKED">🔒 Locked</button>
+                        <button class="lock-filter-chip" data-status="UNLOCKED">🔓 Unlocked</button>
+                    </div>
+                </div>
+                <div class="lock-toolbar-right">
+                    <button class="btn btn-outline btn-sm" id="btnExportLock" title="Xuất khai báo lock ra file JSON">
+                        <svg viewBox="0 0 20 20" fill="currentColor" width="13" height="13"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                        Export JSON
+                    </button>
+                    <button class="btn btn-outline btn-sm" id="btnImportLock" title="Import khai báo từ file JSON">
+                        <svg viewBox="0 0 20 20" fill="currentColor" width="13" height="13"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg>
+                        Import JSON
+                    </button>
+                    <input type="file" id="lockImportInput" accept=".json" style="display:none">
+                    <button class="btn btn-primary" id="btnAddLock">
+                        <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/></svg>
+                        Thêm khai báo
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Lock Table -->
+            <div class="lock-table-wrap">
+                <table class="lock-table">
+                    <thead>
+                        <tr>
+                            <th class="lock-th-check"><input type="checkbox" id="lockSelectAll" title="Chọn tất cả"></th>
+                            <th>Mã NH (pc)</th>
+                            <th>Tên NH</th>
+                            <th>Trạng thái</th>
+                            <th>⏰ Thời gian Lock</th>
+                            <th>🔓 Thời gian Unlock</th>
+                            <th>Ghi chú</th>
+                            <th>Đếm ngược</th>
+                            <th>Hành động</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lockTableBody">
+                        <tr><td colspan="9" class="lock-empty">Đang tải...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Bulk Import Panel -->
+            <div class="lock-bulk-panel">
+                <div class="lock-bulk-header">
+                    <h4>📋 Khóa hàng loạt</h4>
+                    <p class="lock-bulk-desc">Nhập nhiều mã NH cùng lúc (mỗi dòng một mã hoặc ngăn cách bằng dấu phẩy)</p>
+                </div>
+                <div class="lock-bulk-grid">
+                    <div class="lock-bulk-field">
+                        <label class="lock-label">Danh sách mã NH</label>
+                        <textarea id="bulkPcInput" class="lock-textarea" rows="4" placeholder="VD:&#10;10GG4101&#10;30SM3201&#10;20KC2101, 20KC2102"></textarea>
+                    </div>
+                    <div class="lock-bulk-times">
+                        <div class="lock-form-group">
+                            <label class="lock-label">⏰ Thời gian bắt đầu Lock</label>
+                            <input type="datetime-local" id="bulkLockStart" class="lock-input">
+                        </div>
+                        <div class="lock-form-group">
+                            <label class="lock-label">🔓 Thời gian Unlock</label>
+                            <input type="datetime-local" id="bulkUnlock" class="lock-input">
+                        </div>
+                        <button class="btn btn-warning" id="btnBulkLock">
+                            <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>
+                            Áp dụng Lock
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════ -->
+        <!-- MODAL: Add / Edit Lock Entry               -->
+        <!-- ══════════════════════════════════════════ -->
+        <div class="lock-modal-overlay hidden" id="lockModalOverlay"></div>
+        <div class="lock-modal hidden" id="lockModal">
+            <div class="lock-modal-header">
+                <h3 id="lockModalTitle">Thêm khai báo Lock</h3>
+                <button class="lock-modal-close" id="btnLockModalClose">✕</button>
+            </div>
+            <div class="lock-modal-body">
+                <input type="hidden" id="lockFormPc">
+                <div class="lock-form-group">
+                    <label class="lock-label">Mã Nhà hàng (pc) <span class="lock-required">*</span></label>
+                    <input type="text" id="lockFormPcInput" class="lock-input" placeholder="VD: 10GG4101" style="text-transform:uppercase">
+                    <span class="lock-hint">Mã phải khớp chính xác với mã trong database</span>
+                </div>
+                <div class="lock-form-group">
+                    <label class="lock-label">⏰ Thời gian bắt đầu Lock</label>
+                    <input type="datetime-local" id="lockFormLockStart" class="lock-input">
+                    <span class="lock-hint">Nhà hàng sẽ chuyển sang LOCKED kể từ thời điểm này</span>
+                </div>
+                <div class="lock-form-group">
+                    <label class="lock-label">🔓 Thời gian Unlock</label>
+                    <input type="datetime-local" id="lockFormUnlock" class="lock-input">
+                    <span class="lock-hint">Để trống = khóa vĩnh viễn cho đến khi khai báo lại</span>
+                </div>
+                <div class="lock-form-group">
+                    <label class="lock-label">Ghi chú</label>
+                    <input type="text" id="lockFormNote" class="lock-input" placeholder="VD: Bảo trì định kỳ tháng 4...">
+                </div>
+
+                <!-- State preview -->
+                <div class="lock-state-preview" id="lockStatePreview">
+                    <div class="lock-preview-title">Xem trước trạng thái</div>
+                    <div class="lock-preview-timeline">
+                        <div class="lt-seg lt-active">ACTIVE</div>
+                        <div class="lt-arrow">→</div>
+                        <div class="lt-seg lt-locked">LOCKED</div>
+                        <div class="lt-arrow">→</div>
+                        <div class="lt-seg lt-unlock">UNLOCKED</div>
+                    </div>
+                </div>
+            </div>
+            <div class="lock-modal-footer">
+                <button class="btn btn-outline" id="btnLockCancel" onclick="LockManager.closeForm()">Hủy</button>
+                <button class="btn btn-primary" id="btnLockSubmit">💾 Lưu khai báo</button>
+            </div>
+        </div>
+
+        <!-- ============================================== -->
+        <!-- USER MANAGER MODULE                            -->
+        <!-- ============================================== -->
+        <section class="module-view" id="view-usermanager">
+            <header class="section-header">
+                <div>
+                    <h2 class="section-title">Quản trị Hệ thống Phân quyền</h2>
+                    <p class="section-subtitle">Tạo và phân quyền người dùng (Chỉ quản trị viên cấp cao)</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="UserManager.openCreateModal()">
+                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        &nbsp; Tạo User Mới
+                    </button>
+                    <button class="btn btn-outline" onclick="UserManager.fetchUsers()">
+                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                    </button>
+                </div>
+            </header>
+            
+            <div class="card" style="overflow-x:auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Tài khoản</th>
+                            <th>Vai trò</th>
+                            <th>Chuỗi cho phép</th>
+                            <th>NH cho phép</th>
+                            <th style="width: 150px; text-align: right;">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTableBody">
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Modal Add/Edit -->
+            <div id="userModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; z-index:9999;">
+                <div style="background:white; padding:24px; border-radius:8px; width:450px; max-width:90%;">
+                    <h3 id="modalUserTitle" style="margin-top:0;">Tạo Người dùng</h3>
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:0.875rem;">Username</label>
+                        <input type="text" id="m_username" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px; font-family:inherit;">
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:0.875rem;">Password</label>
+                        <input type="password" id="m_password" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px; font-family:inherit;">
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:0.875rem;">Vai trò (role)</label>
+                        <select id="m_role" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px; font-family:inherit;">
+                            <option value="user">User thường (Bị chặn xem tất cả nếu không khai báo Chuỗi/NH)</option>
+                            <option value="admin">Quản trị viên (Xem mọi thông tin)</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:0.875rem;">Chuỗi (Chains) cho phép (Bỏ trống = không giới hạn chuỗi)</label>
+                        <input type="text" id="m_chains" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px; font-family:inherit;" placeholder="VD: GOG, ASH... cách nhau bằng dấu phẩy">
+                    </div>
+                    <div style="margin-bottom:20px;">
+                        <label style="display:block; font-weight:600; margin-bottom:4px; font-size:0.875rem;">Nhà hàng (PCs) cho phép (Bỏ trống = không giới hạn nhà hàng)</label>
+                        <input type="text" id="m_pcs" style="width:100%; padding:8px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px; font-family:inherit;" placeholder="VD: 10GG4101, 10AS0002... cách nhau dấu phẩy">
+                    </div>
+                    <div style="text-align:right;">
+                        <button class="btn btn-outline" onclick="UserManager.closeModal()">Hủy</button>
+                        <button class="btn btn-primary" onclick="UserManager.saveUser()">Lưu cập nhật</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- BOTTOM NAVIGATION (Mobile)                      -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <nav class="bottom-nav" id="bottomNav">
+        <button class="bottom-nav-item active" data-module="dashboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+                <rect x="14" y="3" width="7" height="4" rx="1.5"/>
+                <rect x="3" y="14" width="7" height="4" rx="1.5"/>
+                <rect x="14" y="11" width="7" height="7" rx="1.5"/>
+            </svg>
+            <span>Dashboard</span>
+        </button>
+        <button class="bottom-nav-item" data-module="forecast">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M3 20L8 15l4 2 5-7 4 4"/>
+            </svg>
+            <span>Forecast</span>
+        </button>
+        <button class="bottom-nav-item" data-module="onboarding">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M12 2v6m0 0l3-3m-3 3L9 5"/>
+                <rect x="3" y="10" width="18" height="12" rx="2"/>
+            </svg>
+            <span>Ingest</span>
+        </button>
+        <button class="bottom-nav-item" data-module="consolidation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <rect x="3" y="3" width="18" height="5" rx="1.5"/>
+                <rect x="3" y="11" width="8" height="5" rx="1.5"/>
+                <rect x="13" y="11" width="8" height="5" rx="1.5"/>
+            </svg>
+            <span>Consolidate</span>
+        </button>
+        <button class="bottom-nav-item" data-module="usermanager">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <span>Users</span>
+        </button>
+    </nav>
+
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Scripts -->
+    <script src="js/data.js"></script>
+    <script src="js/users.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/dashboard.js"></script>
+    <script src="js/forecast.js"></script>
+    <script src="js/onboarding.js"></script>
+    <script src="js/consolidation.js"></script>
+    <script src="js/newrestaurant.js"></script>
+    <script src="js/lockmanager.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+
+    ╔═══════════════════════════════════════════════════╗
+    ║         AEON LEDGER — API Server                  ║
+    ║         http://localhost:5050                    ║
+    ╠═══════════════════════════════════════════════════╣
+    ║  Endpoints:                                       ║
+    ║   GET /api/health          → Connection test      ║
+    ║   GET /api/actual          → Actual data (MSSQL)  ║
+    ║   GET /api/actual/columns  → Column metadata      ║
+    ║   GET /api/actual/summary  → Aggregated summary   ║
+    ║   GET /api/actual/restaurants → Restaurant list    ║
+    ║   GET /api/actual/periods  → Available periods     ║
+    ║   GET /api/forecast        → Forecast (StarRocks) ║
+    ║   GET /api/forecast/columns→ Forecast columns     ║
+    ║   GET /api/pnl             → Combined PnL view    ║
+    ╚═══════════════════════════════════════════════════╝
+    
+ * Serving Flask app 'app'
+ * Debug mode: on
+2026-04-18 02:20:05,040 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.2.115:5050
+2026-04-18 02:20:05,040 [INFO] [33mPress CTRL+C to quit[0m
+2026-04-18 02:20:05,041 [INFO]  * Restarting with stat
+2026-04-18 02:20:05,176 [WARNING]  * Debugger is active!
+2026-04-18 02:20:05,183 [INFO]  * Debugger PIN: 190-500-742
+2026-04-18 02:20:07,810 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader…
+2026-04-18 02:20:22,827 [ERROR] [DB] Connection failed to 192.168.222.13: (20009, b'DB-Lib error message 20009, severity 9:\nUnable to connect: Adaptive Server is unavailable or does not exist (192.168.222.13)\nNet-Lib error during Operation timed out (60)\n')
+2026-04-18 02:20:22,827 [ERROR] [ACTUAL/SUMMARY] Error: (20009, b'DB-Lib error message 20009, severity 9:\nUnable to connect: Adaptive Server is unavailable or does not exist (192.168.222.13)\nNet-Lib error during Operation timed out (60)\n')
+2026-04-18 02:20:22,828 [INFO] 127.0.0.1 - - [18/Apr/2026 02:20:22] "[35m[1mGET /api/actual/summary HTTP/1.1[0m" 500 -
+2026-04-18 02:20:44,754 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader…
+2026-04-18 02:20:59,756 [ERROR] [DB] Connection failed to 192.168.222.13: (20009, b'DB-Lib error message 20009, severity 9:\nUnable to connect: Adaptive Server is unavailable or does not exist (192.168.222.13)\nNet-Lib error during Operation timed out (60)\n')
+2026-04-18 02:20:59,757 [ERROR] [ACTUAL/SUMMARY] Error: (20009, b'DB-Lib error message 20009, severity 9:\nUnable to connect: Adaptive Server is unavailable or does not exist (192.168.222.13)\nNet-Lib error during Operation timed out (60)\n')
+2026-04-18 02:20:59,764 [INFO] 127.0.0.1 - - [18/Apr/2026 02:20:59] "[35m[1mGET /api/actual/summary HTTP/1.1[0m" 500 -
+2026-04-18 02:21:13,780 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader…
+2026-04-18 02:21:28,781 [ERROR] [DB] Connection failed to 192.168.222.13: (20009, b'DB-Lib error message 20009, severity 9:\nUnable to connect: Adaptive Server is unavailable or does not exist (192.168.222.13)\nNet-Lib error during Operation timed out (60)\n')
+2026-04-18 02:21:28,781 [ERROR] [ACTUAL/SUMMARY] Error: (20009, b'DB-Lib error message 20009, severity 9:\nUnable to connect: Adaptive Server is unavailable or does not exist (192.168.222.13)\nNet-Lib error during Operation timed out (60)\n')
+2026-04-18 02:21:28,782 [INFO] 127.0.0.1 - - [18/Apr/2026 02:21:28] "[35m[1mGET /api/actual/summary HTTP/1.1[0m" 500 -
+2026-04-18 02:28:03,186 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "GET / HTTP/1.1" 200 -
+2026-04-18 02:28:03,484 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /css/styles.css HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,486 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "GET /js/data.js HTTP/1.1" 200 -
+2026-04-18 02:28:03,486 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /js/utils.js HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,487 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /js/charts.js HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,488 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "GET /js/dashboard.js HTTP/1.1" 200 -
+2026-04-18 02:28:03,488 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /js/onboarding.js HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,489 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /js/consolidation.js HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,490 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /js/forecast.js HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,491 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /js/app.js HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,491 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:03] "[36mGET /js/newrestaurant.js HTTP/1.1[0m" 304 -
+2026-04-18 02:28:03,512 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader…
+2026-04-18 02:28:03,513 [INFO] [DB] Opening new connection to 192.168.222.13:1433 as misreader…
+2026-04-18 02:28:04,827 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:04] "GET /api/actual/datekeys HTTP/1.1" 200 -
+2026-04-18 02:28:04,839 [INFO] [CACHE] Busted all cached responses
+2026-04-18 02:28:04,840 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:04] "POST /api/cache/bust HTTP/1.1" 200 -
+2026-04-18 02:28:05,754 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:05] "GET /api/chains HTTP/1.1" 200 -
+2026-04-18 02:28:06,321 [INFO] [ACTUAL/SUMMARY] datekey=202604 pc=None
+2026-04-18 02:28:07,094 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:07] "GET /api/actual/summary HTTP/1.1" 200 -
+2026-04-18 02:28:29,312 [INFO] [CACHE] Busted all cached responses
+2026-04-18 02:28:29,313 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:29] "POST /api/cache/bust HTTP/1.1" 200 -
+2026-04-18 02:28:29,370 [INFO] [ACTUAL/SUMMARY] datekey=202603 pc=None
+2026-04-18 02:28:29,597 [INFO] 192.168.2.115 - - [18/Apr/2026 02:28:29] "GET /api/actual/summary?datekey=202603 HTTP/1.1" 200 -
+2026-04-18 02:29:50,863 [INFO] [CACHE] Busted all cached responses
+2026-04-18 02:29:50,864 [INFO] 192.168.2.115 - - [18/Apr/2026 02:29:50] "POST /api/cache/bust HTTP/1.1" 200 -
+2026-04-18 02:29:50,894 [INFO] [ACTUAL/SUMMARY] datekey=202603 pc=10AS4556
+2026-04-18 02:29:51,141 [INFO] 192.168.2.115 - - [18/Apr/2026 02:29:51] "GET /api/actual/summary?datekey=202603&pc=10AS4556 HTTP/1.1" 200 -
+2026-04-18 02:32:21,379 [INFO] [CACHE] Busted all cached responses
+2026-04-18 02:32:21,380 [INFO] 192.168.2.115 - - [18/Apr/2026 02:32:21] "POST /api/cache/bust HTTP/1.1" 200 -
+2026-04-18 02:32:21,418 [INFO] [ACTUAL/SUMMARY] datekey=202602 pc=10AS4556
+2026-04-18 02:32:21,632 [INFO] 192.168.2.115 - - [18/Apr/2026 02:32:21] "GET /api/actual/summary?datekey=202602&pc=10AS4556 HTTP/1.1" 200 -
+2026-04-18 02:33:32,718 [INFO] 192.168.2.115 - - [18/Apr/2026 02:33:32] "GET /api/chains HTTP/1.1" 200 -
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/multiprocessing/resource_tracker.py:216: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/multiprocessing/resource_tracker.py:216: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
