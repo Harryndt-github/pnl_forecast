@@ -281,57 +281,57 @@ except Exception as _fh_err:
 # DATABASE CONNECTION HELPERS
 # ═══════════════════════════════════════════════════════════════
 
-class PyodbcCursorWrapper:
+class MssqlCursorWrapper:
+    """
+    Thin wrapper around pymssql cursor that supports `as_dict` mode.
+    pymssql natively supports as_dict on the cursor; this class provides
+    a uniform interface used throughout the app.
+    """
     def __init__(self, cursor, as_dict=False):
         self._cursor = cursor
         self.as_dict = as_dict
 
     def execute(self, *args, **kwargs):
-        # pyodbc uses ? instead of %s
-        if len(args) > 0 and isinstance(args[0], str):
-            query = args[0]
-            query = query.replace('%s', '?')
-            args = (query,) + args[1:]
         self._cursor.execute(*args, **kwargs)
 
-    def _make_dict(self, row):
-        if not row: return row
-        return dict(zip([c[0] for c in self._cursor.description], row))
-
     def fetchone(self):
-        row = self._cursor.fetchone()
-        if self.as_dict and row:
-            return self._make_dict(row)
-        return row
+        return self._cursor.fetchone()
 
     def fetchall(self):
-        rows = self._cursor.fetchall()
-        if self.as_dict:
-            return [self._make_dict(r) for r in rows]
-        return rows
+        return self._cursor.fetchall()
 
     def close(self):
         self._cursor.close()
 
-class PyodbcConnWrapper:
-    def __init__(self, conn):
+
+class MssqlConnWrapper:
+    """Thin wrapper around pymssql connection for as_dict cursor support."""
+    def __init__(self, conn, as_dict=False):
         self._conn = conn
-    
+        self._default_as_dict = as_dict
+
     def cursor(self, as_dict=False):
-        return PyodbcCursorWrapper(self._conn.cursor(), as_dict=as_dict)
-    
+        # pymssql supports as_dict natively at cursor creation
+        return MssqlCursorWrapper(
+            self._conn.cursor(as_dict=as_dict or self._default_as_dict),
+            as_dict=as_dict or self._default_as_dict
+        )
+
     def close(self):
         self._conn.close()
 
+
 _mssql_conn = None  # module-level singleton
+
 
 def get_mssql_connection():
     """
-    Return a persistent SQL Server connection, reconnecting if closed.
-    Uses pyodbc natively on Windows for stability instead of pymssql.
+    Return a persistent SQL Server connection via pymssql (cross-platform).
+    Works on both Windows (local) and Linux (Render/Docker) without
+    requiring ODBC drivers.
     """
     global _mssql_conn
-    import pyodbc
+    import pymssql  # cross-platform: no ODBC driver needed
 
     host     = os.getenv('MSSQL_HOST',     '192.168.222.13')
     user     = os.getenv('MSSQL_USER',     'misreader')
@@ -340,22 +340,25 @@ def get_mssql_connection():
     password = os.getenv('MSSQL_PASSWORD')
 
     def _connect():
-        # Get latest SQL Server driver on Windows
-        drivers = [d for d in pyodbc.drivers() if 'SQL' in d]
-        driver = drivers[-1] if drivers else 'SQL Server'
-        if any("ODBC Driver" in d for d in drivers):
-            driver = [d for d in drivers if "ODBC Driver" in d][-1]
-            
-        logger.info(f"[DB] Opening new connection to {host}:{port} as {user} using {driver}...")
-        conn_str = f"DRIVER={{{driver}}};SERVER={host},{port};DATABASE={db};UID={user};PWD={password};"
-        # Increase timeout internally so pyodbc doesn't hang forever
-        raw_conn = pyodbc.connect(conn_str, timeout=10)
-        return PyodbcConnWrapper(raw_conn)
+        logger.info(f"[DB] Opening new pymssql connection to {host}:{port} as {user}...")
+        raw_conn = pymssql.connect(
+            server=host,
+            port=port,
+            user=user,
+            password=password,
+            database=db,
+            login_timeout=10,
+            timeout=30,
+            charset='UTF-8'
+        )
+        return MssqlConnWrapper(raw_conn)
 
     # Ping the existing connection before reusing it
     if _mssql_conn is not None:
         try:
-            _mssql_conn.cursor().execute("SELECT 1")
+            cur = _mssql_conn.cursor()
+            cur.execute("SELECT 1")
+            cur.close()
             return _mssql_conn
         except Exception:
             logger.warning("[DB] Stale connection detected -- reconnecting...")
@@ -1860,22 +1863,33 @@ def get_master_log():
 
 
 # ═══════════════════════════════════════════════════════════════
-# MAIN
+# MAIN — Cross-platform entry point
 # ═══════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', 5050))
     debug = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
+    engine = 'Development (Flask)' if debug else 'Waitress'
 
     # ASCII-safe banner — avoids UnicodeEncodeError on Windows consoles
     print(f"""
     +===================================================+
-    |         PNL FORECAST -- API Server Output          |
+    |         PNL FORECAST -- API Server                 |
     |         http://localhost:{port}                    |
-    |         WSGI Engine: Waitress                      |
     |         Environment: {'Development' if debug else 'Production'}              |
     +===================================================+
     """)
 
-    from waitress import serve
-    serve(app, host='0.0.0.0', port=port, threads=8)
+    if debug:
+        # Development mode: use Flask built-in server (hot reload)
+        app.run(host='0.0.0.0', port=port, debug=True)
+    else:
+        # Production on Windows: use Waitress (no UNIX sockets needed)
+        # On Linux/Render: use gunicorn via start command instead
+        try:
+            from waitress import serve
+            print("[Server] Starting with Waitress...")
+            serve(app, host='0.0.0.0', port=port, threads=8)
+        except ImportError:
+            print("[Server] Waitress not found, using Flask dev server...")
+            app.run(host='0.0.0.0', port=port)

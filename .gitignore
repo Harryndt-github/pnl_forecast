@@ -1,4 +1,26 @@
+# Environment & secrets
 .env
+*.env
+
+# Python cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
+flask.log
+
+# Data files (potentially sensitive)
+master_load_log.json
+*.xlsx
+
+# Virtual environments
+venv/
+.venv/
+env/
