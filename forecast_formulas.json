@@ -1,0 +1,461 @@
+{
+  "updated_at": "2026-04-30 17:48:58",
+  "updated_by": "admin",
+  "formulas": {
+    "TC": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "DT01": {
+      "method": "historical",
+      "growth_rate": 5,
+      "lookback": 2
+    },
+    "DT0101": {
+      "method": "historical",
+      "growth_rate": 5,
+      "lookback": 4
+    },
+    "DT010101": {
+      "method": "historical",
+      "growth_rate": 5,
+      "lookback": 4
+    },
+    "DT010102": {
+      "method": "historical",
+      "growth_rate": 5,
+      "lookback": 4
+    },
+    "DT02": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "DT020101": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "DT020201": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "DT020301": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "DT020302": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "DT020303": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "DT020304": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "DT020310": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP01": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP0101": {
+      "method": "percent_revenue",
+      "base_period": "avg_3",
+      "revenue_growth": 5
+    },
+    "CP010101": {
+      "method": "percent_revenue",
+      "base_period": "avg_3",
+      "revenue_growth": 5
+    },
+    "CP010102": {
+      "method": "percent_revenue",
+      "base_period": "avg_3",
+      "revenue_growth": 5
+    },
+    "CP010103": {
+      "method": "percent_revenue",
+      "base_period": "avg_3",
+      "revenue_growth": 5
+    },
+    "CP010201": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP0104": {
+      "method": "percent_revenue",
+      "base_period": "avg_3",
+      "revenue_growth": 5
+    },
+    "CP010401": {
+      "method": "percent_revenue",
+      "base_period": "avg_3",
+      "revenue_growth": 5
+    },
+    "CP010402": {
+      "method": "percent_revenue",
+      "base_period": "avg_3",
+      "revenue_growth": 5
+    },
+    "CP0201": {
+      "method": "fixed",
+      "fixed_value": 641000
+    },
+    "CP020104": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020105": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020106": {
+      "method": "fixed",
+      "fixed_value": 570000
+    },
+    "CP020116": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP0202": {
+      "method": "historical",
+      "growth_rate": 5,
+      "lookback": 4
+    },
+    "CP020201": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020202": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020203": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020204": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020205": {
+      "method": "percent_revenue",
+      "base_period": "avg_3",
+      "revenue_growth": 5
+    },
+    "CP020206": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020207": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020208": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020209": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020210": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP0203": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020301": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020302": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020303": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020305": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020306": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP0204": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020401": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020402": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020403": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020404": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP0205": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020501": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020502": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP0206": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020601": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020602": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020603": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020604": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP0207": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020701": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020702": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020703": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP0208": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020801": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP0209": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP020901": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP0210": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP021003": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP021004": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP021008": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP0211": {
+      "method": "rolling4w",
+      "rolling4w_adjustment": 5
+    },
+    "CP021103": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP02110301": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP03": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP0301": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP0302": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP04": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP0401": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP0402": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP09": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "DT03": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "DT0301": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "DT0302": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "DT0303": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP05": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP0501": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP0502": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP0503": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "DT04": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "DT0401": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "DT0402": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "DT0403": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP06": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP0601": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP0602": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP0603": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP07": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    },
+    "CP08": {
+      "method": "anchor",
+      "multiplier": 1.05,
+      "buffer": 0,
+      "anchor_period": "avg_3"
+    }
+  }
+}

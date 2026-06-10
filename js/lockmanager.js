@@ -106,8 +106,10 @@ const LockManager = {
                 }));
 
                 const dbMatched = json.db_matched || 0;
+                const dbNote = json.db_checked ? ` - ${dbMatched} co du lieu DB` : '';
                 this._setDbStatus('live',
                     `✅ ${this.masterList.length} NH từ Master — ${dbMatched} có dữ liệu DB`);
+                if (!json.db_checked) this._setDbStatus('live', `${this.masterList.length} NH tu Master`);
             } else {
                 throw new Error(json.message || 'Invalid response');
             }

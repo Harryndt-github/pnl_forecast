@@ -24,3 +24,8 @@ master_load_log.json
 venv/
 .venv/
 env/
+
+# App data dumps and test/benchmark data
+saved_reports.json
+data/
+

@@ -10,7 +10,7 @@ import io
 import json
 import logging
 from logging.handlers import RotatingFileHandler
-from datetime import datetime
+from datetime import datetime, date
 from functools import lru_cache
 
 # ─── Windows UTF-8 safety ───────────────────────────────────
@@ -41,7 +41,7 @@ load_dotenv()
 
 # ─── App Setup ───
 app = Flask(__name__, static_folder='.', static_url_path='')
-app.secret_key = os.getenv('FLASK_SECRET_KEY', os.urandom(24))
+app.secret_key = os.getenv('FLASK_SECRET_KEY') or 'pnl_forecast_local_session_key'
 
 # 1. Strict CORS
 CORS(app, resources={r"/api/*": {"origins": [
@@ -287,18 +287,33 @@ class MssqlCursorWrapper:
     pymssql natively supports as_dict on the cursor; this class provides
     a uniform interface used throughout the app.
     """
-    def __init__(self, cursor, as_dict=False):
+    def __init__(self, cursor, as_dict=False, paramstyle='format'):
         self._cursor = cursor
         self.as_dict = as_dict
+        self.paramstyle = paramstyle
 
     def execute(self, *args, **kwargs):
+        if self.paramstyle == 'qmark' and args:
+            query = args[0].replace('%s', '?') if isinstance(args[0], str) else args[0]
+            args = (query, *args[1:])
         self._cursor.execute(*args, **kwargs)
 
+    def _row_to_dict(self, row):
+        if row is None or not self.as_dict:
+            return row
+        if isinstance(row, dict):
+            return row
+        columns = [col[0] for col in (self._cursor.description or [])]
+        return {columns[i]: row[i] for i in range(len(columns))}
+
     def fetchone(self):
-        return self._cursor.fetchone()
+        return self._row_to_dict(self._cursor.fetchone())
 
     def fetchall(self):
-        return self._cursor.fetchall()
+        rows = self._cursor.fetchall()
+        if not self.as_dict:
+            return rows
+        return [self._row_to_dict(row) for row in rows]
 
     def close(self):
         self._cursor.close()
@@ -306,32 +321,41 @@ class MssqlCursorWrapper:
 
 class MssqlConnWrapper:
     """Thin wrapper around pymssql connection for as_dict cursor support."""
-    def __init__(self, conn, as_dict=False):
+    def __init__(self, conn, as_dict=False, driver='pymssql'):
         self._conn = conn
         self._default_as_dict = as_dict
+        self.driver = driver
 
     def cursor(self, as_dict=False):
+        use_dict = as_dict or self._default_as_dict
+        if self.driver == 'pyodbc':
+            return MssqlCursorWrapper(
+                self._conn.cursor(),
+                as_dict=use_dict,
+                paramstyle='qmark'
+            )
         # pymssql supports as_dict natively at cursor creation
         return MssqlCursorWrapper(
-            self._conn.cursor(as_dict=as_dict or self._default_as_dict),
-            as_dict=as_dict or self._default_as_dict
+            self._conn.cursor(as_dict=use_dict),
+            as_dict=use_dict
         )
 
     def close(self):
         self._conn.close()
 
 
-_mssql_conn = None  # module-level singleton
+import threading
+_mssql_local = threading.local()
 
 
 def get_mssql_connection():
     """
-    Return a persistent SQL Server connection via pymssql (cross-platform).
+    Return a persistent thread-local SQL Server connection via pymssql (cross-platform).
     Works on both Windows (local) and Linux (Render/Docker) without
     requiring ODBC drivers.
     """
-    global _mssql_conn
-    import pymssql  # cross-platform: no ODBC driver needed
+    if not hasattr(_mssql_local, 'conn'):
+        _mssql_local.conn = None
 
     host     = os.getenv('MSSQL_HOST',     '192.168.222.13')
     user     = os.getenv('MSSQL_USER',     'misreader')
@@ -339,8 +363,29 @@ def get_mssql_connection():
     port     = int(os.getenv('MSSQL_PORT', 1433))
     password = os.getenv('MSSQL_PASSWORD')
 
-    def _connect():
-        logger.info(f"[DB] Opening new pymssql connection to {host}:{port} as {user}...")
+    def _connect_pyodbc():
+        import pyodbc
+        drivers = pyodbc.drivers()
+        driver = next((d for d in reversed(drivers) if 'SQL Server' in d), None)
+        if not driver:
+            raise RuntimeError('No SQL Server ODBC driver installed')
+        logger.info(f"[DB] Opening new thread-local pyodbc connection to {host}:{port} as {user}...")
+        conn_str = (
+            f"DRIVER={{{driver}}};"
+            f"SERVER={host},{port};"
+            f"UID={user};"
+            f"PWD={password or ''};"
+            "TrustServerCertificate=yes;"
+            "Connection Timeout=5;"
+        )
+        if db:
+            conn_str += f"DATABASE={db};"
+        raw_conn = pyodbc.connect(conn_str, timeout=30)
+        return MssqlConnWrapper(raw_conn, driver='pyodbc')
+
+    def _connect_pymssql():
+        import pymssql  # cross-platform: no ODBC driver needed
+        logger.info(f"[DB] Opening new thread-local pymssql connection to {host}:{port} as {user}...")
         raw_conn = pymssql.connect(
             server=host,
             port=port,
@@ -351,28 +396,36 @@ def get_mssql_connection():
             timeout=30,
             charset='UTF-8'
         )
-        return MssqlConnWrapper(raw_conn)
+        return MssqlConnWrapper(raw_conn, driver='pymssql')
+
+    def _connect():
+        if os.getenv('MSSQL_USE_PYMSSQL', '').lower() not in ('1', 'true', 'yes'):
+            try:
+                return _connect_pyodbc()
+            except Exception as e:
+                logger.warning(f"[DB] pyodbc connection failed, falling back to pymssql: {e}")
+        return _connect_pymssql()
 
     # Ping the existing connection before reusing it
-    if _mssql_conn is not None:
+    if _mssql_local.conn is not None:
         try:
-            cur = _mssql_conn.cursor()
+            cur = _mssql_local.conn.cursor()
             cur.execute("SELECT 1")
             cur.close()
-            return _mssql_conn
+            return _mssql_local.conn
         except Exception:
-            logger.warning("[DB] Stale connection detected -- reconnecting...")
+            logger.warning("[DB] Stale thread-local connection detected -- reconnecting...")
             try:
-                _mssql_conn.close()
+                _mssql_local.conn.close()
             except Exception:
                 pass
-            _mssql_conn = None
+            _mssql_local.conn = None
 
     try:
-        _mssql_conn = _connect()
-        return _mssql_conn
+        _mssql_local.conn = _connect()
+        return _mssql_local.conn
     except Exception as e:
-        logger.error(f"[DB] Connection failed to {host}: {e}")
+        logger.error(f"[DB] Thread-local connection failed to {host}: {e}")
         raise
 
 
@@ -455,21 +508,28 @@ ACTUAL_TABLE = "DataMart.MIS.FC213_FACT_ACT"
 DAILY_SALES_TABLE = "DataMart.MIS.DAILY_SALES"
 
 
+def _month_range_for_datekey(datekey):
+    dk = int(datekey)
+    year, month = dk // 100, dk % 100
+    start = date(year, month, 1)
+    end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    return start.isoformat(), end.isoformat()
+
+
 def _fetch_daily_sales_tc(conn, datekey, pc_raw=None, chain=None):
     """
     Fetch TC (GuestsCount) from DAILY_SALES for a given period.
     Considers both single/multiple restaurants (pc_raw) or chains (chain).
     """
     cursor = conn.cursor(as_dict=True)
-    dk = int(datekey)
-    year, month = dk // 100, dk % 100
+    start_date, end_date = _month_range_for_datekey(datekey)
 
     query = f"""
         SELECT SUM(CAST(ISNULL(GuestsCount, 0) AS FLOAT)) AS total_tc
         FROM {DAILY_SALES_TABLE}
-        WHERE YEAR(ShiftDate) = %s AND MONTH(ShiftDate) = %s
+        WHERE ShiftDate >= %s AND ShiftDate < %s
     """
-    params = [year, month]
+    params = [start_date, end_date]
 
     # Two-step lookup for target RestaurantCodes to prevent SQL Server deadlocks
     target_rest_codes = set()
@@ -566,6 +626,49 @@ def _fetch_daily_sales_tc_by_period(conn, datekeys, pc_raw=None, chain=None):
     cursor.close()
 
     return {int(r['dk']): safe_float(r['total_tc']) for r in rows}
+
+
+def _fetch_daily_sales_tc_by_pc_period(conn, datekeys, pcs):
+    """Fetch GuestsCount by restaurant and month for bottom-up forecasts."""
+    cursor = conn.cursor(as_dict=True)
+    conditions = []
+    params = []
+    for dk in datekeys:
+        start_date, end_date = _month_range_for_datekey(dk)
+        conditions.append("(ShiftDate >= %s AND ShiftDate < %s)")
+        params.extend([start_date, end_date])
+
+    rcode_to_pc = {}
+    for pc in pcs or []:
+        pc_str = str(pc).strip()
+        if len(pc_str) >= 4:
+            rcode_to_pc[pc_str[-4:]] = pc_str
+
+    if not conditions or not rcode_to_pc:
+        cursor.close()
+        return {}
+
+    placeholders = ', '.join(['%s'] * len(rcode_to_pc))
+    query = f"""
+        SELECT RestaurantCode,
+               YEAR(ShiftDate) * 100 + MONTH(ShiftDate) AS dk,
+               SUM(CAST(ISNULL(GuestsCount, 0) AS FLOAT)) AS total_tc
+        FROM {DAILY_SALES_TABLE}
+        WHERE ({' OR '.join(conditions)})
+          AND RestaurantCode IN ({placeholders})
+        GROUP BY RestaurantCode, YEAR(ShiftDate) * 100 + MONTH(ShiftDate)
+    """
+    params.extend(rcode_to_pc.keys())
+    cursor.execute(query, tuple(params))
+    rows = cursor.fetchall()
+    cursor.close()
+
+    out = {}
+    for row in rows:
+        pc = rcode_to_pc.get(str(row.get('RestaurantCode') or '').strip())
+        if pc:
+            out.setdefault(pc, {})[int(row['dk'])] = safe_float(row['total_tc'])
+    return out
 
 
 def _pc_filter_clause(pc_raw, params):
@@ -687,23 +790,15 @@ def get_actual_columns():
 
 @app.route('/api/actual/restaurants', methods=['GET'])
 def get_restaurants():
-    """Get distinct list of restaurant codes (pc) from FC213_FACT_ACT."""
+    """Get distinct list of ACTIVE restaurant codes (pc) from Open_Close.xlsx."""
     try:
-        conn   = get_mssql_connection()
-        cursor = conn.cursor(as_dict=True)
-        cursor.execute(f"""
-            SELECT DISTINCT pc
-            FROM {ACTUAL_TABLE}
-            WHERE pc IS NOT NULL AND pc != ''
-            ORDER BY pc
-        """)
-        rows = cursor.fetchall()
-        restaurants = [r['pc'] for r in rows if r.get('pc')]
-        filtered_restaurants = filter_restaurants_by_rbac(restaurants)
+        master_list = _read_master_excel()
+        active_pcs = [r['pc'] for r in master_list if r['status'] == 'ACTIVE']
+        filtered_restaurants = filter_restaurants_by_rbac(active_pcs)
 
         return jsonify({
             'status':      'ok',
-            'restaurants': filtered_restaurants,
+            'restaurants': sorted(filtered_restaurants),
             'count':       len(filtered_restaurants)
         })
 
@@ -784,9 +879,10 @@ def get_actual_summary():
     try:
         datakey = request.args.get('datakey') or request.args.get('datekey')
         pc_raw  = request.args.get('pc')
+        chain   = request.args.get('chain')
 
         # ── Cache hit ──
-        cache_key = f"summary:{datakey or 'latest'}:{pc_raw or 'ALL'}"
+        cache_key = f"summary:{datakey or 'latest'}:{pc_raw or chain or 'ALL'}"
         cached = _cache_get(cache_key)
         if cached:
             logger.info(f"[ACTUAL/SUMMARY] Cache hit → {cache_key}")
@@ -821,9 +917,18 @@ def get_actual_summary():
         params = [int(datakey)]
 
         pc_clause, params = _pc_filter_clause(pc_raw, params)
-        query += pc_clause + " GROUP BY indicator_code"
+        query += pc_clause
+        if not pc_raw and chain:
+            chain_list = [c.strip() for c in chain.split(',') if c.strip()]
+            if len(chain_list) == 1:
+                query += " AND LEFT(pc, 4) = %s"
+                params.append(chain_list[0])
+            elif len(chain_list) > 1:
+                query += f" AND LEFT(pc, 4) IN ({','.join(['%s'] * len(chain_list))})"
+                params.extend(chain_list)
+        query += " GROUP BY indicator_code"
 
-        logger.info(f"[ACTUAL/SUMMARY] datekey={datakey} pc={pc_raw}")
+        logger.info(f"[ACTUAL/SUMMARY] datekey={datakey} pc={pc_raw} chain={chain}")
         cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
         cursor.close()
@@ -845,7 +950,7 @@ def get_actual_summary():
 
         # ── Merge TC from DAILY_SALES (GuestsCount) ──
         try:
-            tc_val = _fetch_daily_sales_tc(conn, datakey, pc_raw)
+            tc_val = _fetch_daily_sales_tc(conn, datakey, pc_raw, chain if not pc_raw else None)
             if tc_val > 0:
                 result['TC'] = tc_val
                 # Compute TA = DT01 / TC (average revenue per guest)
@@ -858,12 +963,14 @@ def get_actual_summary():
         except Exception as e:
             logger.warning(f"[ACTUAL/SUMMARY] Could not fetch TC from DAILY_SALES: {e}")
 
-        return jsonify({
+        payload = {
             'status':     'ok',
             'datekey':    int(datakey),
-            'restaurant': pc_raw or 'ALL',
+            'restaurant': pc_raw or chain or 'ALL',
             'data':       result
-        })
+        }
+        _cache_set(cache_key, payload)
+        return jsonify(payload)
 
 
     except Exception as e:
@@ -1122,42 +1229,53 @@ def get_chains():
     """
     Get chain → restaurant hierarchy.
     Chains are identified by the first 4 characters of pc.
-    Source: FC213_FACT_ACT
-    Returns: { chains: [ { chain: '10GG', restaurants: ['10GG4102', ...] } ] }
+    Source: Open_Close.xlsx (Master list, ACTIVE only)
+    Returns: { chains: [ { chain: '10GG', name: 'Gogi', restaurants: ['10GG4102', ...] } ] }
     """
     try:
-        conn   = get_mssql_connection()
-        cursor = conn.cursor(as_dict=True)
+        master_list = _read_master_excel()
+        active_master = [r for r in master_list if r.get('status') == 'ACTIVE']
+        filtered_set = set(filter_restaurants_by_rbac([r['pc'] for r in active_master]))
 
-        cursor.execute(f"""
-            SELECT DISTINCT pc
-            FROM {ACTUAL_TABLE}
-            WHERE pc IS NOT NULL AND pc != ''
-            ORDER BY pc
-        """)
-        rows = cursor.fetchall()
-        rows = cursor.fetchall()
-        cursor.close()
-
-        all_pcs = [str(r['pc']).strip() for r in rows if r['pc']]
-        filtered_pcs = filter_restaurants_by_rbac(all_pcs)
-
-        # Group by first 4 characters
         chain_map = {}
-        for pc in filtered_pcs:
-            if len(pc) >= 4:
-                chain_prefix = pc[:4]
-                if chain_prefix not in chain_map:
-                    chain_map[chain_prefix] = []
-                chain_map[chain_prefix].append(pc)
+        for r in active_master:
+            pc = r['pc']
+            if pc not in filtered_set or len(pc) < 4:
+                continue
+            prefix = pc[:4]
+            chain_name = r.get('chain_name') or r.get('br') or r.get('brand') or prefix
+            group_key = chain_name.upper()
+            if group_key not in chain_map:
+                chain_map[group_key] = {
+                    'chain_name': chain_name,
+                    'prefixes': set(),
+                    'restaurants': []
+                }
+            chain_map[group_key]['prefixes'].add(prefix)
+            chain_map[group_key]['restaurants'].append({
+                'code':   pc,
+                'name':   r.get('store', ''),
+                'region': r.get('area', ''),
+                'area':   r.get('area', ''),
+                'brand':  r.get('brand', ''),
+                'chain_name': chain_name,
+                'status': r.get('status', '')
+            })
 
         chains = []
-        for prefix in sorted(chain_map.keys()):
+        for group_key in sorted(chain_map.keys()):
+            prefixes = sorted(chain_map[group_key]['prefixes'])
+            restaurants = sorted(chain_map[group_key]['restaurants'], key=lambda x: x['code'])
             chains.append({
-                'chain':       prefix,
-                'count':       len(chain_map[prefix]),
-                'restaurants': chain_map[prefix]
+                'chain':       ','.join(prefixes),
+                'name':        chain_map[group_key]['chain_name'],
+                'chain_name':  chain_map[group_key]['chain_name'],
+                'prefixes':    prefixes,
+                'count':       len(restaurants),
+                'restaurants': restaurants
             })
+
+        logger.info(f"[CHAINS] Loaded {len(chains)} ACTIVE chains from Open_Close.xlsx after RBAC")
 
         return jsonify({
             'status':             'ok',
@@ -1560,6 +1678,657 @@ def compute_forecast():
 # HEALTH CHECK & CONNECTION TEST
 # ═══════════════════════════════════════════════════════════════
 
+def _resolve_master_pcs(pc_raw=None, chain_raw=None):
+    master = _read_master_excel()
+    active = [r['pc'] for r in master if r.get('status') == 'ACTIVE']
+    allowed = set(filter_restaurants_by_rbac(active))
+    if pc_raw:
+        requested = [p.strip() for p in str(pc_raw).split(',') if p.strip()]
+        return [p for p in requested if p in allowed]
+    if chain_raw:
+        prefixes = [c.strip() for c in str(chain_raw).split(',') if c.strip()]
+        return [p for p in active if p in allowed and any(p.startswith(pref) for pref in prefixes)]
+    return [p for p in active if p in allowed]
+
+
+@app.route('/api/forecast/compute-v2', methods=['POST'])
+@limiter.limit("15 per minute")
+def compute_forecast_v2():
+    """Bottom-up forecast: compute each restaurant first, then roll up."""
+    try:
+        body = request.get_json() or {}
+        horizon = int(body.get('horizon', 1) or 1)
+        pc = body.get('pc')
+        chain = body.get('chain')
+        selected_pcs = _resolve_master_pcs(pc, chain)
+        all_scope_pcs = _resolve_master_pcs()
+        scope_coverage = (len(selected_pcs) / len(all_scope_pcs)) if all_scope_pcs else 0.0
+        # The Excel benchmark sheet is an aggregate target. It is used for
+        # reconciliation only; store forecasts must remain bottom-up.
+        benchmark_scope_ok = scope_coverage >= 0.90
+        should_calibrate_to_excel = bool(body.get('force_calibrate_to_excel', False)) and benchmark_scope_ok
+        should_benchmark = bool(body.get('benchmark', True)) and benchmark_scope_ok
+        if not selected_pcs:
+            return jsonify({'status': 'error', 'message': 'No active restaurants matched this filter'}), 400
+
+        conn = get_mssql_connection()
+        cursor = conn.cursor(as_dict=True)
+        pc_placeholders = ','.join(['%s'] * len(selected_pcs))
+
+        cursor.execute(f"""
+            SELECT DISTINCT TOP 12 datekey
+            FROM {ACTUAL_TABLE}
+            WHERE pc IN ({pc_placeholders})
+              AND datekey IS NOT NULL
+            ORDER BY datekey DESC
+        """, tuple(selected_pcs))
+        period_rows = cursor.fetchall()
+        periods = [int(r['datekey']) for r in period_rows if r.get('datekey')]
+        if not periods:
+            cursor.close()
+            return jsonify({'status': 'ok', 'message': 'No historical data found', 'projections': [], 'restaurant_projections': {}})
+
+        period_placeholders = ','.join(['%s'] * len(periods))
+        cursor.execute(f"""
+            SELECT pc, datekey, indicator_code,
+                   SUM(CAST(ISNULL(actual_numerator, 0) AS FLOAT)) AS total
+            FROM {ACTUAL_TABLE}
+            WHERE datekey IN ({period_placeholders})
+              AND pc IN ({pc_placeholders})
+              AND indicator_code IS NOT NULL AND indicator_code != ''
+            GROUP BY pc, datekey, indicator_code
+            ORDER BY pc, datekey
+        """, tuple(periods + selected_pcs))
+        rows = cursor.fetchall()
+        cursor.close()
+
+        hist_by_pc = {}
+        codes = set()
+        for row in rows:
+            p = str(row['pc']).strip()
+            dk = int(row['datekey'])
+            code = str(row['indicator_code']).strip()
+            val = safe_float(row['total'])
+            hist_by_pc.setdefault(p, {}).setdefault(dk, {})[code] = val
+            codes.add(code)
+
+        hist_periods = sorted({int(r['datekey']) for r in rows})
+        if not hist_periods:
+            return jsonify({'status': 'ok', 'message': 'No historical data found', 'projections': [], 'restaurant_projections': {}})
+
+        try:
+            tc_by_pc_period = _fetch_daily_sales_tc_by_pc_period(conn, hist_periods, selected_pcs)
+            for p, by_period in tc_by_pc_period.items():
+                for dk, tc_val in by_period.items():
+                    if tc_val <= 0:
+                        continue
+                    hist_by_pc.setdefault(p, {}).setdefault(dk, {})['TC'] = tc_val
+                    dt01 = safe_float(hist_by_pc[p][dk].get('DT01', 0))
+                    hist_by_pc[p][dk]['TA'] = round(dt01 / tc_val, 2) if tc_val else 0.0
+                    codes.add('TC')
+                    codes.add('TA')
+            logger.info(f"[FORECAST/COMPUTE-V2] Merged TC by restaurant for {len(tc_by_pc_period)} stores")
+        except Exception as e:
+            logger.warning(f"[FORECAST/COMPUTE-V2] Could not merge TC by restaurant: {e}")
+
+        last_period = hist_periods[-1]
+        include_current_month = bool(body.get('include_current_month', True))
+        future_periods = []
+        y, m = last_period // 100, last_period % 100
+        start_offset = 0 if include_current_month else 1
+        for i in range(start_offset, start_offset + horizon):
+            fm = m + i
+            fy = y
+            while fm > 12:
+                fm -= 12
+                fy += 1
+            future_periods.append(fy * 100 + fm)
+
+        params = body.get('params') or {}
+        item_configs = _load_forecast_formula_configs()
+        item_configs.update(body.get('item_configs') or {})
+        default_growth = safe_float(params.get('growth_rate', 5.0)) / 100.0
+        lookback = int(params.get('lookback', 3) or 3)
+        formula_codes = {'TA', 'SD01', 'SD02', 'SD03', 'SD04', 'SD05', 'SD07', 'SD08', 'SD09', 'SD10', 'SD11'}
+
+        restaurant_projections = {}
+        for p in selected_pcs:
+            store_hist = []
+            for dk in hist_periods:
+                row = {'datekey': dk}
+                row.update(hist_by_pc.get(p, {}).get(dk, {}))
+                store_hist.append(row)
+            store_proj = []
+            for idx, fp in enumerate(future_periods):
+                out = {'datekey': fp}
+                for code in codes:
+                    if code in formula_codes:
+                        continue
+                    vals = [safe_float(r.get(code, 0)) for r in store_hist if code in r]
+                    recent = vals[-lookback:] if vals else []
+                    base = sum(recent) / len(recent) if recent else 0.0
+                    cfg = item_configs.get(code, {})
+                    growth_period = idx if include_current_month else idx + 1
+                    method = cfg.get('method', 'historical')
+
+                    if method == 'fixed':
+                        out[code] = round(safe_float(cfg.get('fixed_value', base)), 2)
+                    elif method == 'anchor':
+                        try:
+                            anchor = int(cfg.get('anchor_period') or 0)
+                        except (TypeError, ValueError):
+                            anchor = 0
+                        anchor_row = next((r for r in store_hist if int(r.get('datekey', 0)) == anchor), None)
+                        anchor_val = safe_float(anchor_row.get(code, 0)) if anchor_row else (vals[-1] if vals else 0.0)
+                        multiplier = safe_float(cfg.get('multiplier', 1.0))
+                        buffer_val = safe_float(cfg.get('buffer', 0))
+                        out[code] = round(anchor_val * multiplier + buffer_val, 2)
+                    elif method == 'percent_revenue':
+                        ratio_vals = []
+                        for r in store_hist[-lookback:]:
+                            rev = safe_float(r.get('DT01', 0))
+                            if rev:
+                                ratio_vals.append(safe_float(r.get(code, 0)) / rev)
+                        ratio = sum(ratio_vals) / len(ratio_vals) if ratio_vals else 0.0
+                        out[code] = round(safe_float(out.get('DT01', 0)) * ratio, 2)
+                    elif method == 'rolling4w':
+                        adj = safe_float(cfg.get('rolling4w_adjustment', default_growth * 100)) / 100.0
+                        out[code] = round(base * ((1 + adj) ** growth_period), 2)
+                    else:
+                        growth = safe_float(cfg.get('growth_rate', default_growth * 100)) / 100.0
+                        cfg_lookback = int(cfg.get('lookback', lookback) or lookback)
+                        cfg_vals = vals[-cfg_lookback:] if vals else []
+                        cfg_base = sum(cfg_vals) / len(cfg_vals) if cfg_vals else base
+                        out[code] = round(cfg_base * ((1 + growth) ** growth_period), 2)
+
+                tc = safe_float(out.get('TC', 0))
+                if tc:
+                    ta_vals = [safe_float(r.get('TA', 0)) for r in store_hist if safe_float(r.get('TA', 0)) > 0]
+                    ta_recent = ta_vals[-lookback:] if ta_vals else []
+                    ta_base = sum(ta_recent) / len(ta_recent) if ta_recent else 0.0
+                    if ta_base and not safe_float(out.get('DT01', 0)):
+                        out['DT01'] = round(tc * ta_base, 2)
+                store_proj.append(_apply_pnl_formula_fields(out))
+            restaurant_projections[p] = store_proj
+
+        calibration = None
+        if should_calibrate_to_excel:
+            calibration = _calibrate_restaurant_projections_to_benchmark(restaurant_projections, formula_codes)
+
+        projections = []
+        for idx, fp in enumerate(future_periods):
+            roll = {'datekey': fp}
+            roll_codes = set(codes)
+            for values in restaurant_projections.values():
+                roll_codes.update(values[idx].keys())
+            for code in roll_codes:
+                if code in ('datekey', 'TA'):
+                    continue
+                roll[code] = round(sum(safe_float(v[idx].get(code, 0)) for v in restaurant_projections.values()), 2)
+            roll = _apply_pnl_formula_fields(roll)
+            if should_calibrate_to_excel:
+                roll = _apply_benchmark_overrides(roll, fp)
+            projections.append(roll)
+
+        reconciliation = None
+        if should_benchmark and projections:
+            target_period = int(body.get('benchmark_period') or projections[0].get('datekey'))
+            target_projection = next((p for p in projections if int(p.get('datekey', 0)) == target_period), projections[0])
+            tolerance_pct = safe_float(body.get('tolerance_pct', 5.0))
+            reconciliation = _reconcile_projection_with_benchmark(target_projection, target_period, tolerance_pct)
+
+        return jsonify({
+            'status': 'ok',
+            'model': 'bottom_up_store',
+            'horizon': horizon,
+            'filter': pc or chain or 'ALL',
+            'historical_periods': hist_periods,
+            'line_items': sorted(codes.union({'TA'})),
+            'historical': [],
+            'projections': projections,
+            'restaurant_projections': restaurant_projections,
+            'calibration': calibration,
+            'calibration_scope': {
+                'selected_restaurants': len(selected_pcs),
+                'all_scope_restaurants': len(all_scope_pcs),
+                'coverage_pct': round(scope_coverage * 100.0, 2),
+                'excel_calibration_applied': should_calibrate_to_excel,
+                'reason': (
+                    'forced_aggregate_calibration'
+                    if should_calibrate_to_excel
+                    else 'benchmark_reconciliation_only_store_bottom_up'
+                    if benchmark_scope_ok
+                    else 'filtered_scope_keeps_store_bottom_up'
+                )
+            },
+            'reconciliation': reconciliation
+        })
+    except Exception as e:
+        logger.error(f"[FORECAST/COMPUTE-V2] Error: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+SAVED_REPORTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'saved_reports.json')
+FORECAST_ARCHIVE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'forecast_period_archive.json')
+FORECAST_FORMULAS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'forecast_formulas.json')
+FORECAST_BENCHMARK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'forecast_excel_benchmark.json')
+
+
+def _load_forecast_formula_configs():
+    if os.path.exists(FORECAST_FORMULAS_FILE):
+        try:
+            with open(FORECAST_FORMULAS_FILE, 'r', encoding='utf-8') as f:
+                return (json.load(f) or {}).get('formulas', {})
+        except Exception as e:
+            logger.warning(f"[FORECAST_FORMULAS] Load failed: {e}")
+    return {}
+
+
+def _load_forecast_benchmark():
+    if os.path.exists(FORECAST_BENCHMARK_FILE):
+        try:
+            with open(FORECAST_BENCHMARK_FILE, 'r', encoding='utf-8-sig') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"[FORECAST_BENCHMARK] Load failed: {e}")
+    return {}
+
+
+def _benchmark_values_for_period(datekey):
+    benchmark = _load_forecast_benchmark()
+    rows = (((benchmark.get('sheets') or {}).get('sum') or {}).get('rows') or [])
+    out = {}
+    key = str(int(datekey))
+    for row in rows:
+        code = row.get('item_code')
+        values = row.get('values') or {}
+        if code and key in values:
+            value = safe_float(values[key])
+            if code not in ('TC', 'TA'):
+                value *= 1_000_000
+            out[code] = value
+    return out
+
+
+def _reconcile_projection_with_benchmark(projection, datekey, tolerance_pct=5.0):
+    excel_vals = _benchmark_values_for_period(datekey)
+    rows = []
+    max_abs_pct = 0.0
+    fail_count = 0
+    for code, excel_val in excel_vals.items():
+        app_val = safe_float(projection.get(code, 0))
+        diff = app_val - excel_val
+        diff_pct = (diff / abs(excel_val) * 100.0) if excel_val else (0.0 if app_val == 0 else 100.0)
+        abs_pct = abs(diff_pct)
+        max_abs_pct = max(max_abs_pct, abs_pct)
+        ok = abs_pct <= tolerance_pct
+        if not ok:
+            fail_count += 1
+        rows.append({
+            'item_code': code,
+            'excel': round(excel_val, 2),
+            'app': round(app_val, 2),
+            'diff': round(diff, 2),
+            'diff_pct': round(diff_pct, 2),
+            'ok': ok
+        })
+    return {
+        'datekey': int(datekey),
+        'tolerance_pct': tolerance_pct,
+        'ok': fail_count == 0,
+        'count': len(rows),
+        'fail_count': fail_count,
+        'max_abs_pct': round(max_abs_pct, 2),
+        'rows': rows
+    }
+
+
+def _apply_benchmark_overrides(row, datekey):
+    targets = _benchmark_values_for_period(datekey)
+    for code, value in targets.items():
+        if code != 'TA':
+            row[code] = round(value, 2)
+    return row
+
+
+def _calibrate_restaurant_projections_to_benchmark(restaurant_projections, formula_codes):
+    """Align roll-up totals to the Excel benchmark while keeping store-level detail."""
+    if not restaurant_projections:
+        return {}
+
+    pcs = list(restaurant_projections.keys())
+    first_rows = next(iter(restaurant_projections.values())) or []
+    calibration = {}
+
+    for idx in range(len(first_rows)):
+        datekey = int(first_rows[idx].get('datekey'))
+        targets = _benchmark_values_for_period(datekey)
+        if not targets:
+            continue
+
+        period_key = str(datekey)
+        calibration[period_key] = {}
+
+        for code, target in targets.items():
+            if code == 'TA' or abs(target) <= 0:
+                continue
+
+            current = sum(safe_float(restaurant_projections[p][idx].get(code, 0)) for p in pcs)
+            if abs(current) > 0:
+                factor = target / current
+                for p in pcs:
+                    restaurant_projections[p][idx][code] = round(
+                        safe_float(restaurant_projections[p][idx].get(code, 0)) * factor,
+                        2
+                    )
+                calibration[period_key][code] = {'mode': 'scale', 'factor': round(factor, 8)}
+            else:
+                revenue_total = sum(safe_float(restaurant_projections[p][idx].get('DT01', 0)) for p in pcs)
+                for p in pcs:
+                    share = (
+                        safe_float(restaurant_projections[p][idx].get('DT01', 0)) / revenue_total
+                        if revenue_total else 1.0 / len(pcs)
+                    )
+                    restaurant_projections[p][idx][code] = round(target * share, 2)
+                calibration[period_key][code] = {'mode': 'allocate_by_revenue'}
+
+        for p in pcs:
+            restaurant_projections[p][idx] = _apply_pnl_formula_fields(restaurant_projections[p][idx])
+
+        for code, target in targets.items():
+            if code == 'TA':
+                continue
+            current = sum(safe_float(restaurant_projections[p][idx].get(code, 0)) for p in pcs)
+            if abs(current) > 0:
+                factor = target / current
+                for p in pcs:
+                    restaurant_projections[p][idx][code] = round(
+                        safe_float(restaurant_projections[p][idx].get(code, 0)) * factor,
+                        2
+                    )
+            else:
+                revenue_total = sum(safe_float(restaurant_projections[p][idx].get('DT01', 0)) for p in pcs)
+                for p in pcs:
+                    share = (
+                        safe_float(restaurant_projections[p][idx].get('DT01', 0)) / revenue_total
+                        if revenue_total else 1.0 / len(pcs)
+                    )
+                    restaurant_projections[p][idx][code] = round(target * share, 2)
+
+    return calibration
+
+
+def _apply_pnl_formula_fields(row):
+    """Recompute Excel-style formula rows instead of forecasting them directly."""
+    def v(code):
+        return safe_float(row.get(code, 0))
+
+    def sum_direct_children(prefix):
+        child_len = len(prefix) + 2
+        vals = [
+            safe_float(val)
+            for key, val in row.items()
+            if isinstance(key, str)
+            and key != prefix
+            and len(key) == child_len
+            and key.startswith(prefix)
+            and not key.endswith(('PT', 'PMS'))
+        ]
+        total = round(sum(vals), 2) if vals else 0.0
+        return total if vals and abs(total) > 0 else None
+
+    for prefix in (
+        'DT01', 'DT02', 'CP01',
+        'CP0201', 'CP0202', 'CP0203', 'CP0204', 'CP0205', 'CP0206',
+        'CP0207', 'CP0208', 'CP0209', 'CP0210', 'CP0211'
+    ):
+        child_sum = sum_direct_children(prefix)
+        if child_sum is not None:
+            row[prefix] = child_sum
+
+    row['TA'] = round(v('DT01') / v('TC'), 2) if v('TC') else 0.0
+    row['SD01'] = round(v('DT01') - v('DT02'), 2)
+    row['SD02'] = round(v('SD01') - v('CP01'), 2)
+
+    opex = 0.0
+    for key, val in row.items():
+        if key.startswith('CP02') and key not in ('CP02',) and not key.endswith(('PT', 'PMS')):
+            opex += safe_float(val)
+    if not v('CP02') and opex:
+        row['CP02'] = round(opex, 2)
+
+    row['SD03'] = round(v('SD02') - v('CP02'), 2)
+    row['SD04'] = round(v('SD03') - v('CP0211'), 2)
+    row['SD08'] = round(v('SD04') + v('DT03') - v('CP05') + v('DT04') - v('CP06') - v('CP07'), 2)
+    row['CP08'] = round(v('SD08') * 0.20, 2) if v('SD08') > 0 else 0.0
+    row['SD09'] = round(v('SD08') - v('CP08'), 2)
+    row['SD10'] = round(v('SD09') + v('CP0211'), 2)
+    return row
+
+def _load_saved_reports():
+    if os.path.exists(SAVED_REPORTS_FILE):
+        try:
+            with open(SAVED_REPORTS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"[SAVED_REPORTS] Load failed: {e}")
+    return []
+
+def _save_reports_to_file(reports):
+    with open(SAVED_REPORTS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(reports, f, ensure_ascii=False, indent=2)
+
+
+def _load_forecast_archive():
+    if os.path.exists(FORECAST_ARCHIVE_FILE):
+        try:
+            with open(FORECAST_ARCHIVE_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"[FORECAST_ARCHIVE] Load failed: {e}")
+    return {'periods': {}}
+
+
+def _save_forecast_archive(archive):
+    with open(FORECAST_ARCHIVE_FILE, 'w', encoding='utf-8') as f:
+        json.dump(archive, f, ensure_ascii=False, indent=2)
+
+
+def _projection_row_for_period(rows, datekey):
+    for row in rows or []:
+        if int(row.get('datekey', 0)) == int(datekey):
+            return row
+    return None
+
+
+def _rollup_restaurant_period_rows(rest_rows):
+    row = {'datekey': None}
+    for rest_row in rest_rows.values():
+        if row['datekey'] is None:
+            row['datekey'] = rest_row.get('datekey')
+        for key, value in rest_row.items():
+            if key in ('datekey', 'TA'):
+                continue
+            row[key] = round(safe_float(row.get(key, 0)) + safe_float(value), 2)
+    tc = safe_float(row.get('TC', 0))
+    row['TA'] = round(safe_float(row.get('DT01', 0)) / tc, 2) if tc else 0.0
+    return _apply_pnl_formula_fields(row)
+
+
+def _archive_report_by_period(report):
+    archive = _load_forecast_archive()
+    periods = archive.setdefault('periods', {})
+    report_id = report.get('id')
+    saved_at = report.get('savedAt')
+    rest_proj = report.get('restaurant_projections') or {}
+    projections = report.get('projections') or []
+
+    for proj in projections:
+        datekey = int(proj.get('datekey', 0) or 0)
+        if not datekey:
+            continue
+        key = str(datekey)
+        current = periods.get(key) or {
+            'id': report_id,
+            'savedAt': saved_at,
+            'datekey': datekey,
+            'filter': report.get('filter'),
+            'method': report.get('method'),
+            'model': report.get('model'),
+            'projections': [],
+            'restaurant_projections': {},
+            'source_reports': []
+        }
+
+        current['id'] = report_id
+        current['savedAt'] = saved_at
+        current['filter'] = report.get('filter')
+        current['method'] = report.get('method')
+        current['model'] = report.get('model')
+        current['calibration_scope'] = report.get('calibration_scope')
+        current['reconciliation'] = report.get('reconciliation')
+        current['reconciliation_warning'] = report.get('reconciliation_warning')
+        current.setdefault('source_reports', []).append({
+            'id': report_id,
+            'savedAt': saved_at,
+            'filter': report.get('filter')
+        })
+
+        period_rest_rows = current.setdefault('restaurant_projections', {})
+        for pc, rows in rest_proj.items():
+            rest_row = _projection_row_for_period(rows, datekey)
+            if rest_row:
+                period_rest_rows[pc] = rest_row
+
+        if period_rest_rows:
+            current['projections'] = [_rollup_restaurant_period_rows(period_rest_rows)]
+        else:
+            current['projections'] = [proj]
+
+        periods[key] = current
+
+    _save_forecast_archive(archive)
+
+@app.route('/api/forecast/reports', methods=['GET'])
+def get_forecast_reports():
+    try:
+        reports = _load_saved_reports()
+        datekey = request.args.get('datekey', type=int)
+        chain = request.args.get('chain')
+        pc = request.args.get('pc')
+        latest = request.args.get('latest', '0')
+        if datekey:
+            archived = (_load_forecast_archive().get('periods') or {}).get(str(datekey))
+            if archived:
+                archived_copy = json.loads(json.dumps(archived))
+                archived_copy['is_period_archive'] = True
+                archived_copy['restaurant_projections'] = {
+                    p: [row] for p, row in (archived_copy.get('restaurant_projections') or {}).items()
+                }
+                reports = [archived_copy] + reports
+        matched = []
+        for r in reports:
+            rest_proj = r.get('restaurant_projections') or {}
+            copy_r = json.loads(json.dumps(r))
+            if pc or chain:
+                if not rest_proj:
+                    continue
+                calibration_scope = r.get('calibration_scope') or {}
+                if calibration_scope.get('excel_calibration_applied') is True:
+                    continue
+                if not calibration_scope and r.get('reconciliation'):
+                    continue
+                targets = [x.strip() for x in str(pc).split(',') if x.strip()] if pc else _resolve_master_pcs(chain_raw=chain)
+                targets = [p for p in targets if p in rest_proj]
+                if not targets:
+                    continue
+                periods_len = len(rest_proj[targets[0]])
+                rolled = []
+                for idx in range(periods_len):
+                    row = {'datekey': rest_proj[targets[0]][idx].get('datekey')}
+                    keys = set().union(*[set(rest_proj[p][idx].keys()) for p in targets])
+                    for key in keys:
+                        if key in ('datekey', 'TA'):
+                            continue
+                        row[key] = round(sum(safe_float(rest_proj[p][idx].get(key, 0)) for p in targets), 2)
+                    tc = safe_float(row.get('TC', 0))
+                    row['TA'] = round(safe_float(row.get('DT01', 0)) / tc, 2) if tc else 0.0
+                    rolled.append(row)
+                copy_r['projections'] = rolled
+            if datekey and datekey not in [int(p.get('datekey', 0)) for p in copy_r.get('projections', [])]:
+                continue
+            matched.append(copy_r)
+        matched.sort(key=lambda x: x.get('id', 0), reverse=True)
+        if latest == '1' and matched:
+            matched = [matched[0]]
+        return jsonify({'status': 'ok', 'count': len(matched), 'reports': matched})
+    except Exception as e:
+        logger.error(f"[SAVED_REPORTS] GET error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/forecast/reports', methods=['POST'])
+def save_forecast_report():
+    try:
+        body = request.get_json() or {}
+        if not body.get('restaurant_projections'):
+            return jsonify({'status': 'error', 'message': 'Report thieu forecast theo tung nha hang'}), 400
+        recon = body.get('reconciliation')
+        reports = _load_saved_reports()
+        report = dict(body)
+        if recon and recon.get('ok') is False:
+            report['reconciliation_warning'] = (
+                f"{recon.get('fail_count')} chi tieu vuot nguong Excel benchmark, "
+                f"max {recon.get('max_abs_pct')}%"
+            )
+        report['id'] = report.get('id', int(datetime.now().timestamp() * 1000))
+        report['savedAt'] = report.get('savedAt', datetime.now().strftime('%d/%m/%Y, %H:%M:%S'))
+        report['savedBy'] = session.get('user', {}).get('username', 'unknown')
+        reports.insert(0, report)
+        _save_reports_to_file(reports[:20])
+        _archive_report_by_period(report)
+        return jsonify({'status': 'ok', 'report_id': report['id']})
+    except Exception as e:
+        logger.error(f"[SAVED_REPORTS] POST error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/forecast/reports/<int:report_id>', methods=['DELETE'])
+def delete_forecast_report(report_id):
+    reports = [r for r in _load_saved_reports() if r.get('id') != report_id]
+    _save_reports_to_file(reports)
+    return jsonify({'status': 'ok', 'message': 'Deleted'})
+
+
+@app.route('/api/forecast/reconcile', methods=['POST'])
+def reconcile_forecast():
+    try:
+        body = request.get_json() or {}
+        datekey = int(body.get('datekey') or 202605)
+        tolerance_pct = safe_float(body.get('tolerance_pct', 5.0))
+        projection = body.get('projection')
+        if projection is None:
+            return jsonify({
+                'status': 'error',
+                'message': 'Pass a projection object from /api/forecast/compute-v2 for reconciliation'
+            }), 400
+        recon = _reconcile_projection_with_benchmark(projection, datekey, tolerance_pct)
+        return jsonify({'status': 'ok', 'reconciliation': recon})
+    except Exception as e:
+        logger.error(f"[FORECAST_RECONCILE] Error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/system/reset-temp', methods=['POST'])
+def reset_temp_data():
+    """Clear server-side temporary forecast data while keeping master Excel intact."""
+    _cache_bust()
+    _save_reports_to_file([])
+    return jsonify({
+        'status': 'ok',
+        'message': 'Temporary server forecast reports cleared',
+        'cleared': ['cache', 'saved_reports']
+    })
+
+
 @app.route('/api/template/import_pnl', methods=['GET'])
 def download_import_template():
     """Generate and return an Excel template for multi-period PnL import."""
@@ -1657,8 +2426,10 @@ def health_check():
 def bust_cache():
     """Invalidate all cached responses (call when user clicks 'Cập nhật')."""
     _cache_bust()
+    _master_cache['data'] = None
+    _master_cache['loaded_at'] = None
     logger.info("[CACHE] Busted all cached responses")
-    return jsonify({'status': 'ok', 'message': 'Cache cleared'})
+    return jsonify({'status': 'ok', 'message': 'Cache cleared', 'master_cache_cleared': True})
 
 # ═══════════════════════════════════════════════════════════════
 # API: MASTER RESTAURANT LIST (from Excel file)
@@ -1698,13 +2469,32 @@ def _read_master_excel():
     seen = set()
     restaurants = []
 
+    headers = [str(v).strip().lower() if v is not None else '' for v in next(ws.iter_rows(min_row=5, max_row=5, values_only=True))]
+    def col(*names):
+        lowered = [n.lower() for n in names]
+        for name in lowered:
+            if name in headers:
+                return headers.index(name)
+        return None
+
+    code_idx = col('Code Report (New)', 'Code Report', 'PC', 'Code')
+    status_idx = col('Status')
+    store_idx = col('Store')
+    brand_idx = col('Brand')
+    br_idx = col('BR')
+    area_idx = col('Area')
+
+    if code_idx is None or status_idx is None:
+        raise ValueError('Master sheet must contain Code Report (New) and Status columns')
+
     # Data starts at row 6 (row 5 is header)
     for row in ws.iter_rows(min_row=6, values_only=True):
-        code_raw = row[2]    # col C: Code Report (New)
-        status   = row[4]    # col E: Status
-        store    = row[7]    # col H: Store name
-        brand    = row[9]    # col J: Brand
-        area     = row[3]    # col D: Area
+        code_raw = row[code_idx]
+        status   = row[status_idx]
+        store    = row[store_idx] if store_idx is not None else ''
+        brand    = row[brand_idx] if brand_idx is not None else ''
+        br       = row[br_idx] if br_idx is not None else ''
+        area     = row[area_idx] if area_idx is not None else ''
 
         # Skip empty / invalid codes
         if not code_raw:
@@ -1737,6 +2527,10 @@ def _read_master_excel():
             'status_raw': status_str,
             'store':  str(store).strip() if store else '',
             'brand':  str(brand).strip() if brand else '',
+            'br':     str(br).strip() if br else '',
+            'chain_name': str(br).strip() if br else (str(brand).strip() if brand else ''),
+            'code':   code,
+            'name':   str(store).strip() if store else '',
             'area':   str(area).strip() if area else '',
         })
 
@@ -1780,6 +2574,7 @@ def get_master_restaurants():
     try:
         force_refresh = request.args.get('refresh', '').lower() == 'true'
         status_filter = request.args.get('status', '').upper()
+        include_db = request.args.get('include_db', '').lower() == 'true'
 
         # Check cache
         if not force_refresh and _master_cache['data'] is not None:
@@ -1794,27 +2589,29 @@ def get_master_restaurants():
             _save_master_log('LOAD_EXCEL', len(master_list),
                              f"Loaded from {MASTER_EXCEL_PATH}")
 
-        # Cross-reference with DB
+        # Cross-reference with DB only when requested. Master refresh should
+        # work even when the actual-data DB is slow or unavailable.
         db_pcs = set()
-        try:
-            conn = get_mssql_connection()
-            cursor = conn.cursor(as_dict=True)
-            cursor.execute(f"""
-                SELECT DISTINCT pc
-                FROM {ACTUAL_TABLE}
-                WHERE pc IS NOT NULL AND pc != ''
-            """)
-            db_pcs = {str(r['pc']).strip() for r in cursor.fetchall()}
-            cursor.close()
-        except Exception as db_err:
-            logger.warning(f"[MASTER] DB cross-reference failed: {db_err}")
+        if include_db:
+            try:
+                conn = get_mssql_connection()
+                cursor = conn.cursor(as_dict=True)
+                cursor.execute(f"""
+                    SELECT DISTINCT pc
+                    FROM {ACTUAL_TABLE}
+                    WHERE pc IS NOT NULL AND pc != ''
+                """)
+                db_pcs = {str(r['pc']).strip() for r in cursor.fetchall()}
+                cursor.close()
+            except Exception as db_err:
+                logger.warning(f"[MASTER] DB cross-reference failed: {db_err}")
 
         # Enrich with DB match info
         result = []
         db_matched = 0
         for r in master_list:
             entry = dict(r)
-            entry['in_db'] = r['pc'] in db_pcs
+            entry['in_db'] = (r['pc'] in db_pcs) if include_db else None
             if entry['in_db']:
                 db_matched += 1
             result.append(entry)
@@ -1836,6 +2633,7 @@ def get_master_restaurants():
             'restaurants': result,
             'count':       len(result),
             'db_matched':  db_matched,
+            'db_checked':  include_db,
             'total_master': len(master_list),
             'loaded_at':   _master_cache.get('loaded_at'),
             'excel_file':  os.path.basename(MASTER_EXCEL_PATH)

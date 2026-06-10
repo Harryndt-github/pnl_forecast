@@ -18,24 +18,30 @@ const Dashboard = {
 
     // ─── Load chains data from API ───
     async loadChainsForDashboard() {
-        try {
-            // Run both in parallel — don't wait for chains before fetching summary
-            const [chainsResp, _] = await Promise.all([
-                fetch('/api/chains').then(r => r.json()).catch(() => ({ status: 'error' })),
-                this._loadDatekeys().then(() => this.refreshData())  // load summary after datekeys
-            ]);
-
-            if (chainsResp.status === 'ok' && chainsResp.chains) {
-                this.allChainsData = chainsResp.chains;
-                this._renderDbChainOptions(chainsResp.chains);
-            } else {
+        // 1. Fetch chains independently and populate dropdown immediately
+        fetch('/api/chains')
+            .then(r => r.json())
+            .then(chainsResp => {
+                if (chainsResp.status === 'ok' && chainsResp.chains) {
+                    this.allChainsData = chainsResp.chains;
+                    this._renderDbChainOptions(chainsResp.chains);
+                } else {
+                    const el = document.getElementById('dbChainOptions');
+                    if (el) el.innerHTML = '<div class="fc-ms-empty">Không nạp được danh sách chuỗi</div>';
+                }
+            })
+            .catch(e => {
+                console.warn('[Dashboard] Could not load chains:', e.message);
                 const el = document.getElementById('dbChainOptions');
-                if (el) el.innerHTML = '<div class="fc-ms-empty">Không kết nối được DB</div>';
-            }
+                if (el) el.innerHTML = '<div class="fc-ms-empty">Không nạp được danh sách chuỗi</div>';
+            });
+
+        // 2. Load datekeys and refresh data independently
+        try {
+            await this._loadDatekeys();
+            await this.refreshData();
         } catch (e) {
-            console.warn('[Dashboard] Could not load chains:', e.message);
-            const el = document.getElementById('dbChainOptions');
-            if (el) el.innerHTML = '<div class="fc-ms-empty">Không kết nối được DB</div>';
+            console.warn('[Dashboard] Summary data refresh failed:', e.message);
         }
     },
 

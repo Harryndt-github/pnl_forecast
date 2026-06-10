@@ -14,11 +14,13 @@ const Consolidation = {
     sourceData: null,           // Raw forecast result from Forecast module
     baseProjections: null,      // Unmodified forecast baseline for current context (Forecast column)
     adjustedProjections: null,  // Deep-copy of projections with user edits (current context)
-    adjInputs: {},              // Raw adj strings: { 'DT01_202504': '+5%', ... } (current context)
-    adjustments: [],            // [{ code, datekey, oldVal, newVal, delta, adjStr, time }] (current context)
+    adjInputs: {},              // Raw adj data: { 'DT01_202504': { pct: 5, amount: 0, reason: '' } }
+    adjustments: [],            // [{ code, datekey, oldVal, newVal, delta, adjPct, adjAmount, reason, time }]
     adjContexts: {},            // Per-context snapshots: { 'all': {...}, 'chain_10GG': {...}, ... }
     currentContextKey: 'all',   // Key of the active context
     savedReports: [],           // Persisted final reports
+    filterOptionsData: [],      // Data for custom dropdown: [{ value, label }]
+    collapsedGroups: new Set(), // Codes of collapsed parent rows
     currentView: 'all',         // 'all' | 'chain' | 'restaurant'
     currentFilter: '',          // Selected chain/restaurant code
     _lastResultId: null,        // Change-detection for new forecast runs
@@ -183,23 +185,37 @@ const Consolidation = {
             return { dk, label: `T${m}/${y}` };
         });
 
-        // ── Header row: Mã | Chỉ tiêu | [Forecast | Adj | Final] per period ──
+        // ── Header row: Mã | Chỉ tiêu | [Forecast | Adj% | AdjAmt | Lý do | Final] per period ──
         thead.innerHTML = `
             <th class="col-code">Mã</th>
             <th class="col-item">Chỉ tiêu</th>
             ${periods.map(p => `
                 <th class="col-forecast-hdr">🔮 ${p.label}</th>
-                <th class="col-adj-hdr">△ Adj</th>
+                <th class="col-adj-hdr col-adj-pct">△ Adj %</th>
+                <th class="col-adj-hdr col-adj-amt">△ Adj (VNĐ)</th>
+                <th class="col-adj-hdr col-adj-reason">📝 Lý do</th>
                 <th class="col-final-hdr">✅ Final</th>
             `).join('')}
         `;
 
         // ── Body rows ──
-        const rows = PNL_DATA.map(item => {
-            const isFormula = !!item.isFormula;
-            const level     = this._getLevel(item.code);
-            const rowClass  = isFormula ? 'row-formula' : (level === 0 ? 'row-parent' : '');
-            const indent    = level === 2 ? 'indent-2' : (level === 1 ? 'indent-1' : '');
+        const rows = PNL_DATA.map((item, index) => {
+            const isFormula  = !!item.isFormula;
+            const isSubtotal = !!item.isSubtotal;
+            const level      = this._getLevel(item.code);
+            const isParent   = !isFormula && !isSubtotal && this._hasChildren(PNL_DATA, index);
+            const parentCode = this._findParentCode(item.code, index);
+            const isHidden   = !isFormula && !isSubtotal && this._isRowHidden(item.code, index);
+            const isCollapsed = this.collapsedGroups.has(item.code);
+
+            let rowClass = isFormula ? 'row-formula' : (isSubtotal ? 'row-formula' : (isParent ? 'row-parent' : (level === 0 ? 'row-kpi' : '')));
+            if (isHidden) rowClass += ' row-collapsed-child';
+            const indent  = level === 3 ? 'indent-3' : (level === 2 ? 'indent-2' : (level === 1 ? 'indent-1' : ''));
+
+            // Toggle arrow for parent rows
+            const toggleIcon = isParent
+                ? `<span class="collapse-toggle ${isCollapsed ? 'collapsed' : ''}" data-toggle-code="${item.code}" title="${isCollapsed ? 'Mở rộng' : 'Thu gọn'}"></span>`
+                : '';
 
             const cells = periods.map((p, pi) => {
                 // Original forecast value — uses context-specific baseline (NOT aggregate)
@@ -210,71 +226,99 @@ const Consolidation = {
                 const finalRow = this.adjustedProjections[pi];
                 const finalVal = finalRow ? (finalRow[item.code] ?? 0) : 0;
 
-                const adjKey = `${item.code}_${p.dk}`;
-                const adjStr = this.adjInputs[adjKey] || '';
+                const adjKey  = `${item.code}_${p.dk}`;
+                const adjData = this.adjInputs[adjKey] || {};
+                const adjPct  = adjData.pct    !== undefined ? adjData.pct    : '';
+                const adjAmt  = adjData.amount !== undefined ? adjData.amount : '';
+                const adjReason = adjData.reason || '';
 
                 // Delta between final and original
-                const delta     = Math.round(finalVal - origVal);
-                const hasAdj    = delta !== 0;
+                const delta  = Math.round(finalVal - origVal);
+                const hasAdj = delta !== 0;
                 const deltaHtml = hasAdj
-                    ? `<span class="adj-delta-hint ${delta > 0 ? 'delta-pos' : 'delta-neg'}">` +
-                      `${delta > 0 ? '+' : ''}${this._fmt(delta)}</span>`
+                    ? `<span class="adj-delta-hint ${delta > 0 ? 'delta-pos' : 'delta-neg'}">${delta > 0 ? '+' : ''}${this._fmt(delta)}</span>`
                     : '';
 
-                if (isFormula) {
-                    // Formula rows: show original + formula result, no adj input
+                if (item.isSubtotal || isFormula) {
+                    // Subtotal/Formula rows: read-only
                     return `
                         <td class="consol-cell cell-forecast">${this._fmt(origVal)}</td>
-                        <td class="consol-cell adj-cell-formula" title="Tự động tính theo công thức">—</td>
+                        <td class="consol-cell adj-cell-formula" title="Tự động tính">—</td>
+                        <td class="consol-cell adj-cell-formula">—</td>
+                        <td class="consol-cell adj-cell-formula">—</td>
                         <td class="consol-cell final-cell ${hasAdj ? 'cell-has-adj' : ''}">${this._fmt(finalVal)}</td>
                     `;
                 } else {
-                    // Editable rows: Forecast (read-only) | Adj input (text) | Final
                     return `
                         <td class="consol-cell cell-forecast">${this._fmt(origVal)}</td>
-                        <td class="consol-cell adj-cell">
-                            <input class="adj-col-input"
+                        <td class="consol-cell adj-cell adj-cell-pct">
+                            <input class="adj-col-input adj-pct-input"
+                                   type="number" step="0.1" min="-100" max="200"
+                                   placeholder="+5 / -3"
+                                   value="${adjPct}"
+                                   data-code="${item.code}" data-dk="${p.dk}"
+                                   data-pi="${pi}" data-orig="${origVal}"
+                                   data-field="pct"
+                                   title="Điều chỉnh theo %">
+                            <span class="adj-pct-label">%</span>
+                        </td>
+                        <td class="consol-cell adj-cell adj-cell-amt">
+                            <input class="adj-col-input adj-amt-input"
                                    type="text"
-                                   placeholder="+5% / -1M"
-                                   value="${adjStr}"
-                                   data-code="${item.code}"
-                                   data-dk="${p.dk}"
-                                   data-pi="${pi}"
-                                   data-orig="${origVal}"
-                                   title="Nhập số tuyệt đối (+5000) hoặc phần trăm (+5%)"
-                            >
+                                   placeholder="±1,000,000"
+                                   value="${adjAmt !== '' ? adjAmt.toLocaleString('vi-VN') : ''}"
+                                   data-code="${item.code}" data-dk="${p.dk}"
+                                   data-pi="${pi}" data-orig="${origVal}"
+                                   data-field="amount"
+                                   title="Điều chỉnh số tuyệt đối (VNĐ)">
                             ${deltaHtml}
+                        </td>
+                        <td class="consol-cell adj-cell adj-cell-reason">
+                            <input class="adj-reason-input"
+                                   type="text"
+                                   placeholder="Lý do..."
+                                   value="${adjReason}"
+                                   data-code="${item.code}" data-dk="${p.dk}"
+                                   data-field="reason"
+                                   title="Lý do điều chỉnh">
                         </td>
                         <td class="consol-cell final-cell ${hasAdj ? 'cell-has-adj' : ''}">${this._fmt(finalVal)}</td>
                     `;
                 }
             }).join('');
 
-            return `<tr class="${rowClass}">
+            return `<tr class="${rowClass}" ${parentCode ? `data-parent-code="${parentCode}"` : ''} data-row-code="${item.code}">
                 <td class="col-code"><span class="code-tag code-level-${level}">${item.code}</span></td>
-                <td class="col-item ${indent}">${item.label}</td>
+                <td class="col-item ${indent}">${toggleIcon}${item.label}</td>
                 ${cells}
             </tr>`;
         }).join('');
 
         tbody.innerHTML = rows;
         this._bindCellEvents();
+        this._bindCollapseEvents();
     },
 
     /* ═══════════════════════════════════════════════════════════
-       CELL EVENTS — Adj column input handler
-       Supports: +5000000 | -3% | +10% | 2000000
+       CELL EVENTS — Adj column input handlers
+       % input: adjust by percentage of original
+       Amount input: adjust by absolute VNĐ amount
+       Reason input: store reason note
        ═══════════════════════════════════════════════════════════ */
     _bindCellEvents() {
+        // % and Amount inputs
         document.querySelectorAll('#consolTbody .adj-col-input').forEach(input => {
-            // Apply on blur
-            input.addEventListener('blur', () => {
-                this._applyAdjFromInput(input);
-            });
-            // Apply on Enter key
+            input.addEventListener('blur', () => this._applyAdjFromInput(input));
             input.addEventListener('keydown', e => {
-                if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+                if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
                 if (e.key === 'Escape') { input.value = ''; input.blur(); }
+            });
+        });
+        // Reason inputs — save on blur/Enter without re-rendering table
+        document.querySelectorAll('#consolTbody .adj-reason-input').forEach(input => {
+            input.addEventListener('blur',    () => this._saveReason(input));
+            input.addEventListener('keydown', e => {
+                if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
             });
         });
     },
@@ -316,18 +360,44 @@ const Consolidation = {
         return { delta, newVal: origVal + delta };
     },
 
+    _saveReason(input) {
+        const code   = input.dataset.code;
+        const dk     = parseInt(input.dataset.dk);
+        const adjKey = `${code}_${dk}`;
+        if (!this.adjInputs[adjKey]) this.adjInputs[adjKey] = {};
+        this.adjInputs[adjKey].reason = input.value.trim();
+        // Update in adjustment log
+        const adj = this.adjustments.find(a => a.code === code && a.datekey === dk);
+        if (adj) adj.reason = input.value.trim();
+    },
+
     _applyAdjFromInput(input) {
         const code    = input.dataset.code;
         const dk      = parseInt(input.dataset.dk);
         const pi      = parseInt(input.dataset.pi);
         const origVal = parseFloat(input.dataset.orig) || 0;
-        const adjStr  = input.value.trim();
+        const field   = input.dataset.field; // 'pct' or 'amount'
         const adjKey  = `${code}_${dk}`;
 
-        // Store raw input string (even if blank = clear adj)
-        this.adjInputs[adjKey] = adjStr;
+        if (!this.adjInputs[adjKey]) this.adjInputs[adjKey] = {};
 
-        const { delta, newVal } = this._parseAdjInput(adjStr, origVal);
+        // Parse and store the field value
+        let rawVal = input.value.trim().replace(/,/g, '');
+        if (field === 'pct') {
+            const pct = parseFloat(rawVal) || 0;
+            this.adjInputs[adjKey].pct = pct !== 0 ? pct : '';
+        } else {
+            const amt = parseFloat(rawVal) || 0;
+            this.adjInputs[adjKey].amount = amt !== 0 ? amt : '';
+        }
+
+        // Compute combined delta: pct takes priority, amount adds on top
+        const adjData = this.adjInputs[adjKey];
+        const pct    = adjData.pct    ? parseFloat(adjData.pct)    : 0;
+        const amount = adjData.amount ? parseFloat(adjData.amount) : 0;
+        const pctDelta = Math.round(origVal * pct / 100);
+        const delta    = pctDelta + Math.round(amount);
+        const newVal   = origVal + delta;
 
         // Update the adjusted projection row
         if (this.adjustedProjections[pi]) {
@@ -335,7 +405,7 @@ const Consolidation = {
             this.adjustedProjections[pi] = this._computeFormulas(this.adjustedProjections[pi]);
         }
 
-        // Update log: replace existing entry for same code+datekey
+        // Update adjustment log
         this.adjustments = this.adjustments.filter(a => !(a.code === code && a.datekey === dk));
         if (delta !== 0) {
             this.adjustments.push({
@@ -344,12 +414,14 @@ const Consolidation = {
                 oldVal:  Math.round(origVal),
                 newVal:  Math.round(newVal),
                 delta:   Math.round(delta),
-                adjStr,
+                adjPct:  pct,
+                adjAmount: amount,
+                reason:  adjData.reason || '',
                 time:    new Date().toLocaleTimeString('vi-VN')
             });
         }
 
-        // Partial re-render: only update Final cells and formula rows
+        // Partial re-render
         this.renderTable();
         this._updateAdjSummary();
         this._renderAdjLog();
@@ -411,12 +483,18 @@ const Consolidation = {
             const dk = a.datekey;
             const m = dk % 100;
             const y = Math.floor(dk / 100);
+            const adjDesc = [
+                a.adjPct    ? `${a.adjPct > 0 ? '+' : ''}${a.adjPct}%`     : null,
+                a.adjAmount ? `${a.adjAmount > 0 ? '+' : ''}${this._fmt(a.adjAmount)}` : null,
+            ].filter(Boolean).join(' + ') || a.adjStr || '—';
             return `<div class="consol-log-item ${cls}">
                 <span class="log-time">${a.time}</span>
                 <span class="log-code">${a.code}</span>
                 <span class="log-period">T${m}/${y}</span>
+                <span class="log-adj">${adjDesc}</span>
                 <span class="log-delta">${sign}${this._fmt(a.delta)}</span>
                 <span class="log-result">${this._fmt(a.oldVal)} → ${this._fmt(a.newVal)}</span>
+                ${a.reason ? `<span class="log-reason" title="Lý do">📝 ${a.reason}</span>` : ''}
             </div>`;
         }).join('');
     },
@@ -430,32 +508,63 @@ const Consolidation = {
             return;
         }
 
+        const restaurantProjections = JSON.parse(JSON.stringify(this.sourceData?.restaurant_projections || {}));
+        if (this.currentView === 'restaurant' && this.currentFilter) {
+            restaurantProjections[this.currentFilter] = JSON.parse(JSON.stringify(this.adjustedProjections));
+        }
+        if (Object.keys(restaurantProjections).length === 0) {
+            Utils.toast('Report nay chua co du lieu forecast theo tung nha hang. Hay hard refresh va chay lai Forecast.', 'error');
+            return;
+        }
+        const reconciliation = this.sourceData?.reconciliation || null;
+        if (reconciliation && reconciliation.ok === false) {
+            Utils.toast(`Canh bao: ${reconciliation.fail_count} chi tieu lech qua nguong Excel benchmark. Report van duoc luu de Dashboard dung forecast bottom-up.`, 'warning');
+        }
+
         const report = {
             id: Date.now(),
             savedAt: new Date().toLocaleString('vi-VN'),
             filter: this.sourceData?.filter || 'ALL',
             method: this.sourceData?.method || '—',
+            model: this.sourceData?.model || 'bottom_up_store',
+            ref_period: this.sourceData?.ref_period || 'last4w',
             periods: this.adjustedProjections.length,
             adjustmentCount: this.adjustments.length,
             adjustments: [...this.adjustments],
             projections: JSON.parse(JSON.stringify(this.adjustedProjections)),
             historical: this.sourceData?.historical
                 ? JSON.parse(JSON.stringify(this.sourceData.historical))
-                : []
+                : [],
+            restaurant_projections: restaurantProjections,
+            reconciliation: reconciliation,
+            calibration_scope: this.sourceData?.calibration_scope || null,
+            chains: [...(this.sourceData?.chains || [])],
+            restaurants: [...(this.sourceData?.restaurants || [])]
         };
 
+        // Save to localStorage (backward compat)
         this.savedReports.unshift(report);
-
-        // Keep max 10 reports
         if (this.savedReports.length > 10) {
             this.savedReports = this.savedReports.slice(0, 10);
         }
-
         try {
             localStorage.setItem('pnl_consol_reports', JSON.stringify(this.savedReports));
         } catch (e) {
             console.warn('[Consolidation] localStorage save failed:', e);
         }
+
+        // Also save to server for Dashboard comparison
+        fetch(`${API_BASE}/api/forecast/reports`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(report)
+        }).then(r => r.json()).then(json => {
+            if (json.status === 'ok') {
+                console.log('[Consolidation] Report saved to server:', json.report_id);
+            }
+        }).catch(e => {
+            console.warn('[Consolidation] Server save failed (localStorage OK):', e.message);
+        });
 
         this._renderSavedReports();
         Utils.toast(`✅ Báo cáo Final đã lưu (${report.adjustmentCount} điều chỉnh)`, 'success');
@@ -531,11 +640,27 @@ const Consolidation = {
         Utils.toast('📂 Đã tải báo cáo', 'info');
     },
 
-    _deleteReport(id) {
+    async _deleteReport(id) {
+        if (!confirm('Xoa bao cao nay khoi Consolidation va Dashboard?')) return;
+
         this.savedReports = this.savedReports.filter(r => r.id !== id);
         try {
             localStorage.setItem('pnl_consol_reports', JSON.stringify(this.savedReports));
         } catch (e) { /* ignore */ }
+
+        try {
+            const resp = await fetch(`${API_BASE}/api/forecast/reports/${id}`, {
+                method: 'DELETE'
+            });
+            const json = await resp.json();
+            if (json.status !== 'ok') {
+                throw new Error(json.message || 'Server delete failed');
+            }
+        } catch (e) {
+            console.warn('[Consolidation] Server delete failed:', e.message);
+            Utils.toast('Da xoa tren trinh duyet, nhung chua xoa duoc ban tren server.', 'warning');
+        }
+
         this._renderSavedReports();
         Utils.toast('🗑 Đã xóa báo cáo', 'info');
     },
@@ -609,20 +734,17 @@ const Consolidation = {
 
         // CSV header
         let csv = 'Mã,Chỉ tiêu,' + periods.join(',') + '\n';
-
-        // Each PNL_DATA row
         PNL_DATA.forEach(item => {
             const vals = projections.map(r => Math.round(r[item.code] ?? 0));
             csv += `${item.code},"${item.label}",${vals.join(',')}\n`;
         });
-
-        // If there are adjustments, add log section
         if (this.adjustments.length > 0) {
             csv += '\n\nNhật ký điều chỉnh\n';
-            csv += 'Thời gian,Mã,Kỳ,Giá trị cũ,Giá trị mới,Chênh lệch\n';
+            csv += 'Thời gian,Mã,Kỳ,Adj%,Adj Số tiền,Giá trị cũ,Giá trị mới,Chênh lệch,Lý do\n';
             this.adjustments.forEach(a => {
                 const dk = a.datekey;
-                csv += `${a.time},${a.code},T${dk % 100}/${Math.floor(dk / 100)},${a.oldVal},${a.newVal},${a.delta}\n`;
+                csv += `${a.time},${a.code},T${dk % 100}/${Math.floor(dk / 100)},` +
+                       `${a.adjPct || ''},${a.adjAmount || ''},${a.oldVal},${a.newVal},${a.delta},"${a.reason || ''}"\n`;
             });
         }
 
@@ -681,6 +803,12 @@ const Consolidation = {
         this.currentView   = view;
         this.currentFilter = '';
 
+        // Reset placeholder and search
+        const ph = document.getElementById('consolFilterPlaceholder');
+        if (ph) ph.textContent = '-- Chọn --';
+        const search = document.getElementById('consolFilterSearch');
+        if (search) search.value = '';
+
         document.querySelectorAll('.consol-view-btn').forEach(b => b.classList.remove('active'));
         const btn = document.querySelector(`.consol-view-btn[data-view="${view}"]`);
         if (btn) btn.classList.add('active');
@@ -709,53 +837,122 @@ const Consolidation = {
     },
 
     _populateFilterOptions() {
-        const select = document.getElementById('consolFilterSelect');
-        if (!select || !this.sourceData) return;
+        const optionsContainer = document.getElementById('consolFilterOptions');
+        const placeholder      = document.getElementById('consolFilterPlaceholder');
+        const searchInput      = document.getElementById('consolFilterSearch');
+        if (!optionsContainer || !this.sourceData) return;
+
+        placeholder.textContent = '⏳ Đang tải...';
+        optionsContainer.innerHTML = '<div class="fc-ms-empty">⏳ Đang tải...</div>';
+        this.filterOptionsData = [];
+        if (searchInput) searchInput.value = '';
 
         if (this.currentView === 'chain') {
-            // Use the chains that were selected when running the forecast
-            const chains = this.sourceData.chains || [];
-            if (chains.length === 0) {
-                select.innerHTML = '<option value="">-- Không có chuỗi nào --</option>';
-                Utils.toast('Forecast không có dữ liệu theo chuỗi', 'warning');
-                return;
-            }
-            select.innerHTML = '<option value="">-- Chọn chuỗi --</option>' +
-                chains.map(c => `<option value="${c}">${c}</option>`).join('');
+            // ── Load chains from /api/chains ──
+            fetch(`${API_BASE}/api/chains`)
+                .then(r => r.json())
+                .then(json => {
+                    const chains = json.chains || json.data || [];
+                    if (chains.length === 0) {
+                        placeholder.textContent = '-- Không có chuỗi nào --';
+                        optionsContainer.innerHTML = '<div class="fc-ms-empty">Không có dữ liệu</div>';
+                        return;
+                    }
+                    this.filterOptionsData = chains.map(c => {
+                        const name  = c.chain_name || c.chain;
+                        const label = name !== c.chain ? `${name} (${c.chain})` : c.chain;
+                        return { value: c.chain, label: label };
+                    });
+                    placeholder.textContent = '-- Chọn chuỗi --';
+                    this._renderFilterOptions(this.filterOptionsData);
+                })
+                .catch(() => {
+                    placeholder.textContent = '-- Lỗi tải danh sách --';
+                    optionsContainer.innerHTML = '<div class="fc-ms-empty">Lỗi kết nối</div>';
+                });
 
         } else if (this.currentView === 'restaurant') {
-            // Use restaurants from the forecast selection
             const rests = this.sourceData.restaurants || [];
             if (rests.length === 0) {
-                // Fallback: fetch restaurant list from API
-                this._fetchRestaurantList(select);
+                this._fetchRestaurantList();
                 return;
             }
-            select.innerHTML = '<option value="">-- Chọn nhà hàng --</option>' +
-                rests.map(r => `<option value="${r}">${r}</option>`).join('');
+            // Handle both old (string) and new (object) restaurant formats
+            this.filterOptionsData = rests.map(r => {
+                if (typeof r === 'string') return { value: r, label: r };
+                const name  = r.name && r.name !== r.code ? `${r.name} (${r.code})` : r.code;
+                const chain = r.chain_name ? ` [${r.chain_name}]` : '';
+                return { value: r.code, label: name + chain };
+            });
+            placeholder.textContent = '-- Chọn nhà hàng --';
+            this._renderFilterOptions(this.filterOptionsData);
         }
     },
 
-    // Fallback: fetch restaurant list from /api/actual/restaurants
-    async _fetchRestaurantList(select) {
+    // Fallback: fetch restaurant list from /api/actual/restaurants (ACTIVE only)
+    async _fetchRestaurantList() {
+        const optionsContainer = document.getElementById('consolFilterOptions');
+        const placeholder      = document.getElementById('consolFilterPlaceholder');
         try {
-            select.innerHTML = '<option value="">⏳ Đang tải danh sách...</option>';
+            placeholder.textContent = '⏳ Đang tải...';
             const resp = await fetch(`${API_BASE}/api/actual/restaurants`);
             const json = await resp.json();
-            const rests = (json.restaurants || json.data || json || []).map(r =>
-                typeof r === 'string' ? r : (r.pc || r.restaurant || r.code || JSON.stringify(r))
-            ).filter(Boolean);
+            const rawList = json.restaurants || json.data || json || [];
+            // Handle enriched objects { code, name, chain_name, region }
+            const rests = rawList.map(r => {
+                if (typeof r === 'string') return { code: r, name: r, chain_name: '' };
+                return { code: r.code || r.pc || r, name: r.name || r.code || r, chain_name: r.chain_name || '' };
+            }).filter(r => r.code);
+
             if (rests.length === 0) {
-                select.innerHTML = '<option value="">-- Không có dữ liệu --</option>';
+                placeholder.textContent = '-- Không có dữ liệu --';
+                optionsContainer.innerHTML = '<div class="fc-ms-empty">Không có dữ liệu (Active)</div>';
                 return;
             }
             this.sourceData.restaurants = rests; // cache for next time
-            select.innerHTML = '<option value="">-- Chọn nhà hàng --</option>' +
-                rests.map(r => `<option value="${r}">${r}</option>`).join('');
+            this.filterOptionsData = rests.map(r => {
+                const name  = r.name && r.name !== r.code ? `${r.name} (${r.code})` : r.code;
+                const chain = r.chain_name ? ` [${r.chain_name}]` : '';
+                return { value: r.code, label: name + chain };
+            });
+            placeholder.textContent = `-- Chọn nhà hàng (${rests.length} Active) --`;
+            this._renderFilterOptions(this.filterOptionsData);
         } catch (e) {
-            select.innerHTML = '<option value="">-- Lỗi tải danh sách --</option>';
             console.error('[Consolidation] Failed to fetch restaurant list:', e);
+            placeholder.textContent = '-- Lỗi tải danh sách --';
+            optionsContainer.innerHTML = '<div class="fc-ms-empty">Lỗi kết nối</div>';
         }
+    },
+
+    _renderFilterOptions(items) {
+        const container = document.getElementById('consolFilterOptions');
+        if (!container) return;
+        
+        if (items.length === 0) {
+            container.innerHTML = '<div class="fc-ms-empty">Không tìm thấy</div>';
+            return;
+        }
+
+        container.innerHTML = items.map(item => `
+            <div class="consol-opt-item" data-value="${item.value}">
+                ${item.label}
+            </div>
+        `).join('');
+
+        // Bind click event for each option
+        container.querySelectorAll('.consol-opt-item').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const val = el.dataset.value;
+                const lbl = el.textContent.trim();
+                
+                document.getElementById('consolFilterPlaceholder').textContent = lbl;
+                document.getElementById('consolFilterDropdown').classList.add('hidden');
+                
+                // Set the filter and re-render data
+                this.setFilter(val);
+            });
+        });
     },
 
     // Called when user changes the filter dropdown
@@ -782,11 +979,10 @@ const Consolidation = {
 
         if (!this.sourceData) return;
 
-        // Build fetch body
+        // Build fetch body (V2 model)
         const body = {
             horizon: this.sourceData.projections?.length || 1,
-            method:  this.sourceData.method || 'historical',
-            params:  {},
+            ref_period: this.sourceData.ref_period || 'last4w',
         };
         if (this.currentView === 'chain') {
             body.chain = filterValue;
@@ -795,7 +991,7 @@ const Consolidation = {
         }
 
         try {
-            const resp = await fetch(`${API_BASE}/api/forecast/compute`, {
+            const resp = await fetch(`${API_BASE}/api/forecast/compute-v2`, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify(body)
@@ -843,11 +1039,37 @@ const Consolidation = {
             btn.addEventListener('click', () => this.setView(btn.dataset.view));
         });
 
-        // Filter dropdown — MUST be bound here (not in setView) to avoid double-binding
-        const filterSelect = document.getElementById('consolFilterSelect');
-        if (filterSelect) {
-            filterSelect.addEventListener('change', () => this.setFilter(filterSelect.value));
+        // Custom Dropdown Filter Events
+        const filterTrigger  = document.getElementById('consolFilterTrigger');
+        const filterDropdown = document.getElementById('consolFilterDropdown');
+        const filterSearch   = document.getElementById('consolFilterSearch');
+
+        if (filterTrigger) {
+            filterTrigger.addEventListener('click', (e) => {
+                e.stopPropagation();
+                filterDropdown.classList.toggle('hidden');
+                if (!filterDropdown.classList.contains('hidden')) {
+                    filterSearch.focus();
+                }
+            });
         }
+
+        if (filterSearch) {
+            filterSearch.addEventListener('input', (e) => {
+                const q = e.target.value.toLowerCase();
+                const filtered = (this.filterOptionsData || []).filter(o => 
+                    o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)
+                );
+                this._renderFilterOptions(filtered);
+            });
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (filterDropdown && !filterDropdown.classList.contains('hidden') && !e.target.closest('#consolFilterPicker')) {
+                filterDropdown.classList.add('hidden');
+            }
+        });
 
         // Save Final
         const saveBtn = document.getElementById('consolSaveFinal');
@@ -867,6 +1089,58 @@ const Consolidation = {
             if (confirm('Xóa tất cả điều chỉnh và khôi phục số liệu gốc?')) {
                 this.resetAdjustments();
             }
+        });
+    },
+
+    /* ═══════════════════════════════════════════════════════════
+       COLLAPSE / EXPAND HELPERS
+       ═══════════════════════════════════════════════════════════ */
+    _hasChildren(data, index) {
+        const code = data[index].code;
+        for (let i = index + 1; i < data.length; i++) {
+            const next = data[i];
+            if (next.isSubtotal || next.isFormula) break;
+            if (next.code.startsWith(code) && next.code.length > code.length) return true;
+            if (!next.code.startsWith(code.slice(0, 2))) break;
+        }
+        return false;
+    },
+
+    _findParentCode(code, index) {
+        for (let i = index - 1; i >= 0; i--) {
+            const prev = PNL_DATA[i];
+            if (prev.isSubtotal || prev.isFormula) continue;
+            if (code.startsWith(prev.code) && code.length > prev.code.length) {
+                return prev.code;
+            }
+        }
+        return null;
+    },
+
+    _isRowHidden(code, index) {
+        for (let i = index - 1; i >= 0; i--) {
+            const prev = PNL_DATA[i];
+            if (prev.isSubtotal || prev.isFormula) continue;
+            if (code.startsWith(prev.code) && code.length > prev.code.length) {
+                if (this.collapsedGroups.has(prev.code)) return true;
+            }
+        }
+        return false;
+    },
+
+    _bindCollapseEvents() {
+        document.querySelectorAll('#consolTbody .collapse-toggle').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const code = el.dataset.toggleCode;
+                if (this.collapsedGroups.has(code)) {
+                    this.collapsedGroups.delete(code);
+                } else {
+                    this.collapsedGroups.add(code);
+                }
+                this.renderTable();
+                this._updateAdjSummary();
+            });
         });
     },
 
@@ -935,10 +1209,11 @@ const Consolidation = {
     _getLevel(code) {
         if (!code) return 0;
         const len = code.trim().length;
-        if (len === 2) return 0;
+        if (len <= 2) return 0;
         if (len === 4) return 1;
         if (len === 6) return 2;
-        return 0;
+        if (len >= 8) return 3;
+        return 1;
     },
 
     _fmt(v) {

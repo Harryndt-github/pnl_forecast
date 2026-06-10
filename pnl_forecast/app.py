@@ -364,23 +364,16 @@ def get_actual_columns():
 
 @app.route('/api/actual/restaurants', methods=['GET'])
 def get_restaurants():
-    """Get distinct list of restaurant codes (pc) from FC213_FACT_ACT."""
+    """Get distinct list of ACTIVE restaurant codes (pc) from Open_Close.xlsx."""
     try:
-        conn   = get_mssql_connection()
-        cursor = conn.cursor(as_dict=True)
-        cursor.execute(f"""
-            SELECT DISTINCT pc
-            FROM {ACTUAL_TABLE}
-            WHERE pc IS NOT NULL AND pc != ''
-            ORDER BY pc
-        """)
-        rows = cursor.fetchall()
-        cursor.close()
+        master_list = _read_master_excel()
+        active_pcs = [r['pc'] for r in master_list if r['status'] == 'ACTIVE']
+        filtered_restaurants = filter_restaurants_by_rbac(active_pcs)
 
         return jsonify({
             'status':      'ok',
-            'restaurants': [r['pc'] for r in rows],
-            'count':       len(rows)
+            'restaurants': sorted(filtered_restaurants),
+            'count':       len(filtered_restaurants)
         })
 
     except Exception as e:
@@ -795,36 +788,45 @@ def get_chains():
     """
     Get chain → restaurant hierarchy.
     Chains are identified by the first 4 characters of pc.
-    Source: FC213_FACT_ACT
-    Returns: { chains: [ { chain: '10GG', restaurants: ['10GG4102', ...] } ] }
+    Source: Open_Close.xlsx (Master list, ACTIVE only)
+    Returns: { chains: [ { chain: '10GG', name: 'Gogi', restaurants: ['10GG4102', ...] } ] }
     """
     try:
-        conn   = get_mssql_connection()
-        cursor = conn.cursor(as_dict=True)
-
-        cursor.execute(f"""
-            SELECT DISTINCT pc
-            FROM {ACTUAL_TABLE}
-            WHERE pc IS NOT NULL AND pc != ''
-            ORDER BY pc
-        """)
-        rows = cursor.fetchall()
-        cursor.close()
+        master_list = _read_master_excel()
+        active_pcs = [r['pc'] for r in master_list if r['status'] == 'ACTIVE']
+        filtered_pcs = filter_restaurants_by_rbac(active_pcs)
+        
+        filtered_set = set(filtered_pcs)
 
         # Group by first 4 characters
         chain_map = {}
-        for r in rows:
-            pc = str(r['pc']).strip()
-            if len(pc) >= 4:
-                chain_prefix = pc[:4]
-                if chain_prefix not in chain_map:
-                    chain_map[chain_prefix] = []
-                chain_map[chain_prefix].append(pc)
+        chain_names = {}
+        for r in master_list:
+            if r['status'] == 'ACTIVE' and r['pc'] in filtered_set:
+                pc = r['pc']
+                if len(pc) >= 4:
+                    prefix = pc[:4]
+                    if prefix not in chain_map:
+                        chain_map[prefix] = []
+                    # Append detailed restaurant object
+                    chain_map[prefix].append({
+                        'code':   pc,
+                        'name':   r.get('store', ''),
+                        'region': r.get('area', ''),
+                        'area':   r.get('area', '')
+                    })
+                    # Get display name
+                    if r.get('br'):
+                        chain_names[prefix] = r['br']
+                    elif r.get('chain_name'):
+                        chain_names[prefix] = r['chain_name']
 
         chains = []
         for prefix in sorted(chain_map.keys()):
             chains.append({
                 'chain':       prefix,
+                'name':        chain_names.get(prefix, prefix),
+                'chain_name':  chain_names.get(prefix, prefix),
                 'count':       len(chain_map[prefix]),
                 'restaurants': chain_map[prefix]
             })
@@ -1290,8 +1292,9 @@ def _read_master_excel():
     for row in ws.iter_rows(min_row=6, values_only=True):
         code_raw = row[2]    # col C: Code Report (New)
         status   = row[4]    # col E: Status
-        store    = row[7]    # col H: Store name
-        brand    = row[9]    # col J: Brand
+        store    = row[5]    # col F: Store name
+        brand    = row[7]    # col H: Brand
+        br       = row[8]    # col I: BR / chain display name
         area     = row[3]    # col D: Area
 
         # Skip empty / invalid codes
@@ -1325,6 +1328,10 @@ def _read_master_excel():
             'status_raw': status_str,
             'store':  str(store).strip() if store else '',
             'brand':  str(brand).strip() if brand else '',
+            'br':     str(br).strip() if br else '',
+            'chain_name': str(br).strip() if br else (str(brand).strip() if brand else ''),
+            'code':   code,
+            'name':   str(store).strip() if store else '',
             'area':   str(area).strip() if area else '',
         })
 
