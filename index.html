@@ -483,12 +483,6 @@
                         <input type="checkbox" id="fcIncludeCurrentMonth" checked style="accent-color:var(--accent);cursor:pointer;">
                         <span>Bao gồm tháng hiện tại</span>
                     </label>
-                    <label style="display:none;align-items:center;gap:6px;margin-left:12px;font-size:12px;color:var(--text-secondary);" id="fcBudgetVersionWrap" title="Nguồn số D&A (CP0211 và mã con) lấy từ bảng budget FC_FACT_BUD theo version được chọn; store/kỳ không có số budget sẽ fallback flat tháng gần nhất">
-                        <span>Budget D&A (CP0211):</span>
-                        <select id="fcBudgetVersion" style="padding:4px 8px;border:1px solid var(--border,#ccc);border-radius:4px;font-size:12px;max-width:180px;">
-                            <option value="">— Không dùng (flat LM) —</option>
-                        </select>
-                    </label>
                 </div>
                 <div class="toolbar-group">
                     <button class="btn btn-primary btn-run-forecast" id="btnRunForecast">
@@ -686,6 +680,13 @@
                                 ⬆️ Upload tiền thuê đã điền
                             </button>
                             <input type="file" id="rentalFileInput" accept=".xlsx" style="display:none;">
+                            <button class="btn btn-outline" id="btnDnaTemplate" style="display:none;" title="Bước 1: Tải file Excel mẫu khấu hao CP0211 — kèm sẵn danh sách nhà hàng ACTIVE và số khấu hao hiện có">
+                                ⬇️ Tải file mẫu khấu hao
+                            </button>
+                            <button class="btn btn-outline" id="btnImportDna" style="display:none;" title="Bước 2: Upload file mẫu đã điền số khấu hao — cập nhật CP0211 cho từng profit center (Manager/Admin)">
+                                ⬆️ Upload khấu hao đã điền
+                            </button>
+                            <input type="file" id="dnaFileInput" accept=".xlsx" style="display:none;">
                         </div>
                     </div>
 

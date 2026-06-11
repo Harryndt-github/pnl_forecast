@@ -515,10 +515,6 @@ def serve_js(filename):
 
 ACTUAL_TABLE = "DataMart.MIS.FC213_FACT_ACT"
 DAILY_SALES_TABLE = "DataMart.MIS.DAILY_SALES"
-# Bảng budget: nguồn forecast cho CP0211 (Store D&A) và các mã con.
-# Cột: item_code_cty = mã chỉ tiêu, amount = số tiền, profit_center = mã nhà hàng,
-# budget_version = phiên bản budget (người dùng chọn khi chạy forecast).
-BUDGET_TABLE = os.environ.get('BUDGET_TABLE', 'DataMart.MIS.FC_FACT_BUD')
 
 
 def _month_range_for_datekey(datekey):
@@ -1748,6 +1744,27 @@ def _resolve_master_pcs(pc_raw=None, chain_raw=None):
     return [p for p in active if p in allowed]
 
 
+def _override_subtree_total(out, prefix, total):
+    """Đặt tổng của một subtree chỉ tiêu = total (số import per store).
+
+    Scale TOÀN BỘ mã con/cháu theo cùng một tỷ lệ dựa trên tổng các mã lá,
+    để bước tổng hợp con→cha (đi từ lá lên) trong _apply_pnl_formula_fields
+    tái tạo đúng total ở mã cha. Subtree không có số liệu con → chỉ đặt cha."""
+    desc = [k for k in out
+            if isinstance(k, str) and k != prefix and k.startswith(prefix)
+            and not k.endswith(('PT', 'PMS'))]
+    leaf_sum = 0.0
+    for k in desc:
+        has_child = any(d != k and d.startswith(k) and len(d) == len(k) + 2 for d in desc)
+        if not has_child:
+            leaf_sum += safe_float(out[k])
+    if desc and leaf_sum:
+        factor = total / leaf_sum
+        for k in desc:
+            out[k] = round(safe_float(out[k]) * factor, 2)
+    out[prefix] = round(total, 2)
+
+
 @app.route('/api/forecast/compute-v2', methods=['POST'])
 @limiter.limit("15 per minute")
 def compute_forecast_v2():
@@ -1866,20 +1883,12 @@ def compute_forecast_v2():
         item_configs = _load_forecast_formula_configs()
         if body.get('item_configs'):
             logger.warning("[FORECAST/COMPUTE-V2] Ignored item_configs override from request body (formula config is locked)")
-        # Tiền thuê CP0209 theo hợp đồng của từng profit center (import qua /api/rental/import).
-        # Store có dữ liệu import → dùng số hợp đồng; store chưa có → fallback theo config (flat LM).
+        # Chi phí import theo từng profit center (manager/admin upload Excel):
+        # - CP0209 tiền thuê hợp đồng (/api/rental/import)
+        # - CP0211 khấu hao (/api/dna/import)
+        # Store có dữ liệu import → dùng số import; store chưa có → fallback theo config (flat LM).
         rental_costs = _load_rental_costs()
-
-        # CP0211 (Store D&A) + mã con: lấy từ bảng budget FC_FACT_BUD theo budget_version
-        # người dùng chọn. Store/kỳ không có số budget → fallback theo config (flat LM).
-        budget_version = str(body.get('budget_version') or '').strip()
-        budget_data = {}
-        if budget_version:
-            try:
-                budget_data = _fetch_budget_amounts(conn, budget_version, selected_pcs, future_periods)
-                logger.info(f"[FORECAST/COMPUTE-V2] Budget '{budget_version}': CP0211 data for {len(budget_data)} stores")
-            except Exception as e:
-                logger.warning(f"[FORECAST/COMPUTE-V2] Budget fetch failed, fallback to config: {e}")
+        dna_costs = _load_dna_costs()
         default_growth = safe_float(params.get('growth_rate', 5.0)) / 100.0
         lookback = int(params.get('lookback', 3) or 3)
         # CP07 (Mgt. bonus = 8% lợi nhuận trước bonus) và CP08 (CIT = 20% SD08)
@@ -1979,31 +1988,15 @@ def compute_forecast_v2():
                 for code in tail_codes:
                     out[code] = _project(code)
 
-                # Ghi đè subtree CP0211 bằng số budget (FC_FACT_BUD) của store/kỳ này nếu có:
-                # xoá toàn bộ CP0211* đã forecast rồi đặt đúng các mã budget cung cấp —
-                # cha/cấp trung gian thiếu sẽ được tổng hợp lại từ con ở bước con→cha.
-                bud_by_period = budget_data.get(p) or {}
-                bud = bud_by_period.get(fp) or bud_by_period.get(None)
-                if bud:
-                    for k in [k for k in out if isinstance(k, str) and k.startswith('CP0211')]:
-                        del out[k]
-                    for code_b, amt in bud.items():
-                        out[code_b] = round(safe_float(amt), 2)
-
-                # Ghi đè CP0209 bằng tiền thuê hợp đồng đã import cho store này (nếu có).
-                # Scale các mã con CP0209xx theo cùng tỷ lệ để tổng con khớp số hợp đồng,
-                # vì _apply_pnl_formula_fields sẽ tính lại cha = tổng các con.
+                # Ghi đè bằng số import per store: CP0209 (tiền thuê), CP0211 (khấu hao).
+                # Toàn bộ mã con/cháu được scale cùng tỷ lệ để bước tổng hợp con→cha
+                # trong _apply_pnl_formula_fields cho ra đúng tổng đã import.
                 rent = rental_costs.get(p)
                 if rent is not None and rent > 0:
-                    child_keys = [k for k in out
-                                  if isinstance(k, str) and len(k) == 8 and k.startswith('CP0209')
-                                  and not k.endswith(('PT', 'PMS'))]
-                    child_sum = sum(safe_float(out[k]) for k in child_keys)
-                    if child_keys and child_sum:
-                        factor = rent / child_sum
-                        for k in child_keys:
-                            out[k] = round(safe_float(out[k]) * factor, 2)
-                    out['CP0209'] = round(rent, 2)
+                    _override_subtree_total(out, 'CP0209', rent)
+                dna = dna_costs.get(p)
+                if dna is not None and dna > 0:
+                    _override_subtree_total(out, 'CP0211', dna)
 
                 store_proj.append(_apply_pnl_formula_fields(out))
             restaurant_projections[p] = store_proj
@@ -2044,9 +2037,9 @@ def compute_forecast_v2():
             'historical': [],
             'projections': projections,
             'restaurant_projections': restaurant_projections,
-            'budget': {
-                'version': budget_version or None,
-                'stores_covered': len(budget_data)
+            'imported_costs': {
+                'rental_stores': len(rental_costs),
+                'dna_stores': len(dna_costs)
             },
             'calibration': calibration,
             'calibration_scope': {
@@ -2167,29 +2160,56 @@ def update_variable_split():
     return jsonify({'status': 'ok', 'message': msg, 'updated': updated})
 
 
-# ─── Rental costs (CP0209) per profit center ───
-def _load_rental_costs():
-    """Return {pc: monthly_rent_amount} from the imported rental file."""
-    if os.path.exists(RENTAL_COSTS_FILE):
+# ─── Chi phí per profit center import từ Excel: CP0209 (tiền thuê), CP0211 (khấu hao) ───
+DNA_COSTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dna_costs.json')
+
+PC_COST_KINDS = {
+    'rental': {
+        'file': RENTAL_COSTS_FILE,
+        'code': 'CP0209',
+        'label': 'tiền thuê',
+        'value_header': 'Tiền thuê/tháng (VND)',
+        'sheet_title': 'Rental CP0209',
+        'template_name': 'Rental_CP0209_Template.xlsx',
+    },
+    'dna': {
+        'file': DNA_COSTS_FILE,
+        'code': 'CP0211',
+        'label': 'khấu hao',
+        'value_header': 'Khấu hao/tháng (VND)',
+        'sheet_title': 'DnA CP0211',
+        'template_name': 'DnA_CP0211_Template.xlsx',
+    },
+}
+
+
+def _read_pc_costs_meta(path):
+    if os.path.exists(path):
         try:
-            with open(RENTAL_COSTS_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f) or {}
-            return {str(pc): safe_float(info.get('amount'))
-                    for pc, info in (data.get('costs') or {}).items()}
+            with open(path, 'r', encoding='utf-8') as f:
+                return json.load(f) or {}
         except Exception as e:
-            logger.warning(f"[RENTAL] Load failed: {e}")
+            logger.warning(f"[PC_COSTS] Load failed ({path}): {e}")
     return {}
 
 
-@app.route('/api/rental/costs', methods=['GET'])
-def get_rental_costs():
-    meta = {}
-    if os.path.exists(RENTAL_COSTS_FILE):
-        try:
-            with open(RENTAL_COSTS_FILE, 'r', encoding='utf-8') as f:
-                meta = json.load(f) or {}
-        except Exception as e:
-            logger.warning(f"[RENTAL] Load failed: {e}")
+def _load_pc_cost_amounts(path):
+    """Return {pc: monthly_amount} from an imported per-PC cost file."""
+    meta = _read_pc_costs_meta(path)
+    return {str(pc): safe_float(info.get('amount'))
+            for pc, info in (meta.get('costs') or {}).items()}
+
+
+def _load_rental_costs():
+    return _load_pc_cost_amounts(RENTAL_COSTS_FILE)
+
+
+def _load_dna_costs():
+    return _load_pc_cost_amounts(DNA_COSTS_FILE)
+
+
+def _pc_costs_response(kind):
+    meta = _read_pc_costs_meta(kind['file'])
     return jsonify({
         'status': 'ok',
         'updated_at': meta.get('updated_at'),
@@ -2199,37 +2219,30 @@ def get_rental_costs():
     })
 
 
-@app.route('/api/rental/template', methods=['GET'])
-def download_rental_template():
-    """Excel template: danh sách PC đang ACTIVE + tiền thuê hiện có (nếu đã import)."""
+def _pc_cost_template_response(kind):
+    """Excel template: danh sách PC đang ACTIVE + số hiện có (nếu đã import)."""
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment
     import io
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Rental CP0209"
+    ws.title = kind['sheet_title']
 
     header_font = Font(bold=True, color='FFFFFF')
     header_fill = PatternFill(start_color='1F4E78', end_color='1F4E78', fill_type='solid')
-    ws.append(["PC Code", "Tên nhà hàng (tham khảo)", "Tiền thuê/tháng (VND)", "Ghi chú"])
+    ws.append(["PC Code", "Tên nhà hàng (tham khảo)", kind['value_header'], "Ghi chú"])
     for col_idx, cell in enumerate(ws[1], 1):
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal='center')
         ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = (18, 40, 22, 30)[col_idx - 1]
 
-    current = {}
-    if os.path.exists(RENTAL_COSTS_FILE):
-        try:
-            with open(RENTAL_COSTS_FILE, 'r', encoding='utf-8') as f:
-                current = (json.load(f) or {}).get('costs', {})
-        except Exception:
-            pass
+    current = _read_pc_costs_meta(kind['file']).get('costs', {})
     try:
         master = _read_master_excel()
     except Exception as e:
-        logger.warning(f"[RENTAL] Master list unavailable for template: {e}")
+        logger.warning(f"[PC_COSTS] Master list unavailable for template: {e}")
         master = []
     for r in master:
         if r.get('status') != 'ACTIVE':
@@ -2243,21 +2256,20 @@ def download_rental_template():
     out.seek(0)
     return send_file(
         out,
-        download_name='Rental_CP0209_Template.xlsx',
+        download_name=kind['template_name'],
         as_attachment=True,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
 
 
-@app.route('/api/rental/import', methods=['POST'])
-def import_rental_costs():
-    """Import tiền thuê CP0209 theo từng profit center từ file Excel.
-    Quyền: manager hoặc admin. Merge theo PC — chỉ các PC có trong file bị cập nhật."""
+def _pc_cost_import_response(kind):
+    """Import chi phí theo từng profit center từ file Excel (theo template).
+    Quyền: manager hoặc admin. Merge theo PC — chỉ PC có trong file bị cập nhật."""
     import openpyxl
 
     user = session.get('user') or {}
     if user.get('role') not in ('admin', 'manager'):
-        return jsonify({'status': 'error', 'message': 'Chỉ manager hoặc admin được import tiền thuê'}), 403
+        return jsonify({'status': 'error', 'message': f"Chỉ manager hoặc admin được import {kind['label']}"}), 403
     upload = request.files.get('file')
     if not upload or not upload.filename:
         return jsonify({'status': 'error', 'message': 'Chưa chọn file Excel (.xlsx)'}), 400
@@ -2273,16 +2285,10 @@ def import_rental_costs():
     try:
         valid_pcs = {r['pc'] for r in _read_master_excel()}
     except Exception as e:
-        logger.warning(f"[RENTAL] Master list unavailable, skipping PC validation: {e}")
+        logger.warning(f"[PC_COSTS] Master list unavailable, skipping PC validation: {e}")
         valid_pcs = None
 
-    meta = {}
-    if os.path.exists(RENTAL_COSTS_FILE):
-        try:
-            with open(RENTAL_COSTS_FILE, 'r', encoding='utf-8') as f:
-                meta = json.load(f) or {}
-        except Exception:
-            meta = {}
+    meta = _read_pc_costs_meta(kind['file'])
     costs = meta.get('costs') or {}
 
     imported, rejected = [], []
@@ -2295,17 +2301,17 @@ def import_rental_costs():
         raw_amount = row[2] if len(row) > 2 else None
         note = str(row[3]).strip() if len(row) > 3 and row[3] is not None else ''
         if raw_amount is None or str(raw_amount).strip() == '':
-            continue  # dòng không nhập tiền thuê → giữ nguyên, không phải lỗi
+            continue  # dòng không nhập số → giữ nguyên, không phải lỗi
         if valid_pcs is not None and pc not in valid_pcs:
             rejected.append(f"{pc}: không có trong master")
             continue
         try:
             amount = float(str(raw_amount).replace(',', '').strip())
         except ValueError:
-            rejected.append(f"{pc}: tiền thuê không hợp lệ ({raw_amount})")
+            rejected.append(f"{pc}: số {kind['label']} không hợp lệ ({raw_amount})")
             continue
         if amount < 0:
-            rejected.append(f"{pc}: tiền thuê âm")
+            rejected.append(f"{pc}: số {kind['label']} âm")
             continue
         costs[pc] = {'amount': round(amount, 2), 'note': note}
         imported.append(pc)
@@ -2319,11 +2325,12 @@ def import_rental_costs():
     meta['updated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     meta['updated_by'] = user.get('username') or user.get('email') or 'unknown'
     meta['costs'] = costs
-    with open(RENTAL_COSTS_FILE, 'w', encoding='utf-8') as f:
+    with open(kind['file'], 'w', encoding='utf-8') as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
-    logger.info(f"[RENTAL] Imported rent for {len(imported)} PCs by '{meta['updated_by']}' ({len(rejected)} rejected)")
+    logger.info(f"[PC_COSTS] Imported {kind['label']} ({kind['code']}) for {len(imported)} PCs "
+                f"by '{meta['updated_by']}' ({len(rejected)} rejected)")
 
-    msg = f"Đã import tiền thuê cho {len(imported)} nhà hàng (tổng {len(costs)} PC có dữ liệu)"
+    msg = f"Đã import {kind['label']} cho {len(imported)} nhà hàng (tổng {len(costs)} PC có dữ liệu)"
     if rejected:
         msg += f". Bỏ qua {len(rejected)} dòng: {'; '.join(rejected[:10])}"
         if len(rejected) > 10:
@@ -2331,115 +2338,34 @@ def import_rental_costs():
     return jsonify({'status': 'ok', 'message': msg, 'imported': len(imported), 'rejected': len(rejected)})
 
 
-# ─── Budget table (FC_FACT_BUD): nguồn forecast CP0211 (Store D&A) ───
-_budget_period_col_cache = {'resolved': False, 'col': None}
+@app.route('/api/rental/costs', methods=['GET'])
+def get_rental_costs():
+    return _pc_costs_response(PC_COST_KINDS['rental'])
 
 
-def _budget_period_column(conn):
-    """Tự phát hiện cột kỳ (yyyymm) của bảng budget qua INFORMATION_SCHEMA — cache 1 lần."""
-    if _budget_period_col_cache['resolved']:
-        return _budget_period_col_cache['col']
-    col = None
-    try:
-        parts = BUDGET_TABLE.split('.')
-        cursor = conn.cursor(as_dict=True)
-        if len(parts) == 3:
-            db, schema, table = parts
-            cursor.execute(
-                f"SELECT COLUMN_NAME FROM {db}.INFORMATION_SCHEMA.COLUMNS "
-                f"WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
-                (schema, table)
-            )
-        else:
-            cursor.execute(
-                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = %s",
-                (parts[-1],)
-            )
-        cols = {str(r['COLUMN_NAME']).strip().lower() for r in cursor.fetchall()}
-        cursor.close()
-        for cand in ('datekey', 'date_key', 'period', 'yyyymm', 'month_key', 'monthkey',
-                     'fiscal_period', 'budget_period'):
-            if cand in cols:
-                col = cand
-                break
-    except Exception as e:
-        logger.warning(f"[BUDGET] Could not inspect {BUDGET_TABLE} columns: {e}")
-    _budget_period_col_cache['col'] = col
-    _budget_period_col_cache['resolved'] = True
-    return col
+@app.route('/api/rental/template', methods=['GET'])
+def download_rental_template():
+    return _pc_cost_template_response(PC_COST_KINDS['rental'])
 
 
-def _fetch_budget_versions(conn):
-    cursor = conn.cursor(as_dict=True)
-    cursor.execute(f"""
-        SELECT DISTINCT budget_version
-        FROM {BUDGET_TABLE}
-        WHERE budget_version IS NOT NULL
-    """)
-    rows = cursor.fetchall()
-    cursor.close()
-    return sorted({str(r['budget_version']).strip() for r in rows if r.get('budget_version')}, reverse=True)
+@app.route('/api/rental/import', methods=['POST'])
+def import_rental_costs():
+    return _pc_cost_import_response(PC_COST_KINDS['rental'])
 
 
-def _fetch_budget_amounts(conn, version, pcs, periods, code_prefix='CP0211'):
-    """Lấy số budget theo từng PC + item cho subtree code_prefix.
-    Trả về {pc: {datekey: {code: amount}}}; nếu bảng không có cột kỳ thì
-    datekey = None và áp cùng một số cho mọi kỳ forecast."""
-    if not pcs:
-        return {}
-    period_col = _budget_period_column(conn)
-    cursor = conn.cursor(as_dict=True)
-    pc_ph = ','.join(['%s'] * len(pcs))
-    if period_col:
-        pe_ph = ','.join(['%s'] * len(periods))
-        cursor.execute(f"""
-            SELECT profit_center AS pc, item_code_cty AS code, {period_col} AS dk,
-                   SUM(CAST(ISNULL(amount, 0) AS FLOAT)) AS total
-            FROM {BUDGET_TABLE}
-            WHERE budget_version = %s
-              AND item_code_cty LIKE %s
-              AND profit_center IN ({pc_ph})
-              AND {period_col} IN ({pe_ph})
-            GROUP BY profit_center, item_code_cty, {period_col}
-        """, tuple([version, code_prefix + '%'] + list(pcs) + list(periods)))
-    else:
-        cursor.execute(f"""
-            SELECT profit_center AS pc, item_code_cty AS code, NULL AS dk,
-                   SUM(CAST(ISNULL(amount, 0) AS FLOAT)) AS total
-            FROM {BUDGET_TABLE}
-            WHERE budget_version = %s
-              AND item_code_cty LIKE %s
-              AND profit_center IN ({pc_ph})
-            GROUP BY profit_center, item_code_cty
-        """, tuple([version, code_prefix + '%'] + list(pcs)))
-    rows = cursor.fetchall()
-    cursor.close()
-
-    out = {}
-    for r in rows:
-        pc = str(r['pc']).strip()
-        code = str(r['code']).strip().upper()
-        if not code.startswith(code_prefix):
-            continue
-        try:
-            dk = int(r['dk']) if r.get('dk') is not None else None
-        except (TypeError, ValueError):
-            dk = None
-        out.setdefault(pc, {}).setdefault(dk, {})[code] = safe_float(r['total'])
-    return out
+@app.route('/api/dna/costs', methods=['GET'])
+def get_dna_costs():
+    return _pc_costs_response(PC_COST_KINDS['dna'])
 
 
-@app.route('/api/budget/versions', methods=['GET'])
-def get_budget_versions():
-    """Danh sách budget_version cho người dùng chọn khi chạy forecast."""
-    try:
-        conn = get_mssql_connection()
-        versions = _fetch_budget_versions(conn)
-        return jsonify({'status': 'ok', 'versions': versions})
-    except Exception as e:
-        logger.warning(f"[BUDGET] Could not list versions: {e}")
-        # Trả ok + rỗng để UI degrade nhẹ nhàng (ẩn dropdown) thay vì lỗi
-        return jsonify({'status': 'ok', 'versions': [], 'message': str(e)})
+@app.route('/api/dna/template', methods=['GET'])
+def download_dna_template():
+    return _pc_cost_template_response(PC_COST_KINDS['dna'])
+
+
+@app.route('/api/dna/import', methods=['POST'])
+def import_dna_costs():
+    return _pc_cost_import_response(PC_COST_KINDS['dna'])
 
 
 @app.route('/api/forecast/formulas', methods=['POST'])

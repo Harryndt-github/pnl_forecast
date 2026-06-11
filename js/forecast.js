@@ -42,66 +42,47 @@ const Forecast = {
         // Khoá UI chỉnh logic: công thức chỉ theo forecast_formulas.json trên server
         if (this.formulasLocked) this._applyFormulaLock();
 
-        // Import tiền thuê CP0209 (Manager/Admin) — dữ liệu hợp đồng, không phải logic
-        this._setupRentalImport();
-
-        // Budget version cho D&A (CP0211) — nguồn FC_FACT_BUD
-        this._loadBudgetVersions();
-    },
-
-    async _loadBudgetVersions() {
-        try {
-            const resp = await fetch(`${API_BASE}/api/budget/versions`);
-            const json = await resp.json();
-            const versions = json.versions || [];
-            const wrap = document.getElementById('fcBudgetVersionWrap');
-            const sel = document.getElementById('fcBudgetVersion');
-            if (!wrap || !sel || !versions.length) return; // không có version → ẩn dropdown, engine fallback
-            versions.forEach(v => {
-                const opt = document.createElement('option');
-                opt.value = v;
-                opt.textContent = v;
-                sel.appendChild(opt);
-            });
-            sel.value = versions[0]; // mặc định version mới nhất
-            wrap.style.display = 'inline-flex';
-        } catch(e) {
-            console.warn('[Forecast] Could not load budget versions:', e.message);
-        }
+        // Import chi phí per PC (Manager/Admin) — dữ liệu, không phải logic:
+        // tiền thuê CP0209 và khấu hao CP0211
+        this._setupCostImports();
     },
 
     userRole: 'user',
 
-    _setupRentalImport() {
+    _setupCostImports() {
         const canImport = ['admin', 'manager'].includes(this.userRole);
-        const tplBtn = document.getElementById('btnRentalTemplate');
-        const impBtn = document.getElementById('btnImportRental');
-        const fileInput = document.getElementById('rentalFileInput');
-        if (tplBtn) {
-            tplBtn.style.display = canImport ? '' : 'none';
-            tplBtn.addEventListener('click', () => {
-                window.open(`${API_BASE}/api/rental/template`, '_blank');
-            });
-        }
-        if (impBtn && fileInput) {
-            impBtn.style.display = canImport ? '' : 'none';
-            impBtn.addEventListener('click', () => fileInput.click());
-            fileInput.addEventListener('change', () => this.uploadRentalFile(fileInput));
-        }
+        const wire = (tplBtnId, impBtnId, fileInputId, tplUrl, importUrl, label) => {
+            const tplBtn = document.getElementById(tplBtnId);
+            const impBtn = document.getElementById(impBtnId);
+            const fileInput = document.getElementById(fileInputId);
+            if (tplBtn) {
+                tplBtn.style.display = canImport ? '' : 'none';
+                tplBtn.addEventListener('click', () => window.open(`${API_BASE}${tplUrl}`, '_blank'));
+            }
+            if (impBtn && fileInput) {
+                impBtn.style.display = canImport ? '' : 'none';
+                impBtn.addEventListener('click', () => fileInput.click());
+                fileInput.addEventListener('change', () => this._uploadCostFile(fileInput, importUrl, label));
+            }
+        };
+        wire('btnRentalTemplate', 'btnImportRental', 'rentalFileInput',
+             '/api/rental/template', '/api/rental/import', 'tiền thuê');
+        wire('btnDnaTemplate', 'btnImportDna', 'dnaFileInput',
+             '/api/dna/template', '/api/dna/import', 'khấu hao');
     },
 
-    async uploadRentalFile(input) {
+    async _uploadCostFile(input, importUrl, label) {
         const file = input.files && input.files[0];
         if (!file) return;
         const fd = new FormData();
         fd.append('file', file);
         try {
-            const resp = await fetch(`${API_BASE}/api/rental/import`, { method: 'POST', body: fd });
+            const resp = await fetch(`${API_BASE}${importUrl}`, { method: 'POST', body: fd });
             const json = await resp.json();
             if (json.status === 'ok') {
                 Utils.toast(`📥 ${json.message}`, 'success');
             } else {
-                Utils.toast(json.message || 'Lỗi import tiền thuê', 'error');
+                Utils.toast(json.message || `Lỗi import ${label}`, 'error');
             }
         } catch(e) {
             Utils.toast('Lỗi kết nối server', 'error');
@@ -984,8 +965,7 @@ const Forecast = {
             horizon:                this.currentHorizon,
             ref_period:             refPeriod,
             holiday_overrides:      holidayOverrides,
-            include_current_month:  includeCurrentMonth,
-            budget_version:         document.getElementById('fcBudgetVersion')?.value || ''
+            include_current_month:  includeCurrentMonth
         };
         if (this.selectedRestaurants.length > 0) {
             body.pc = this.selectedRestaurants.join(',');
