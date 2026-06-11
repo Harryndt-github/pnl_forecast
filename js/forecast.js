@@ -44,6 +44,30 @@ const Forecast = {
 
         // Import tiền thuê CP0209 (Manager/Admin) — dữ liệu hợp đồng, không phải logic
         this._setupRentalImport();
+
+        // Budget version cho D&A (CP0211) — nguồn FC_FACT_BUD
+        this._loadBudgetVersions();
+    },
+
+    async _loadBudgetVersions() {
+        try {
+            const resp = await fetch(`${API_BASE}/api/budget/versions`);
+            const json = await resp.json();
+            const versions = json.versions || [];
+            const wrap = document.getElementById('fcBudgetVersionWrap');
+            const sel = document.getElementById('fcBudgetVersion');
+            if (!wrap || !sel || !versions.length) return; // không có version → ẩn dropdown, engine fallback
+            versions.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v;
+                opt.textContent = v;
+                sel.appendChild(opt);
+            });
+            sel.value = versions[0]; // mặc định version mới nhất
+            wrap.style.display = 'inline-flex';
+        } catch(e) {
+            console.warn('[Forecast] Could not load budget versions:', e.message);
+        }
     },
 
     userRole: 'user',
@@ -960,7 +984,8 @@ const Forecast = {
             horizon:                this.currentHorizon,
             ref_period:             refPeriod,
             holiday_overrides:      holidayOverrides,
-            include_current_month:  includeCurrentMonth
+            include_current_month:  includeCurrentMonth,
+            budget_version:         document.getElementById('fcBudgetVersion')?.value || ''
         };
         if (this.selectedRestaurants.length > 0) {
             body.pc = this.selectedRestaurants.join(',');

@@ -298,7 +298,7 @@
       "multiplier": 1.0,
       "buffer": 0,
       "anchor_period": null,
-      "_rule": "Store D&A theo Zfi100N — flat gia tri thang gan nhat; writeoff khi co quyet dinh"
+      "_rule": "Store D&A: uu tien so budget tu DataMart.MIS.FC_FACT_BUD theo budget_version nguoi dung chon (per PC + item + ky); store/ky khong co so budget -> fallback flat gia tri thang gan nhat"
     },
     "CP021103": {
       "method": "anchor",

@@ -514,6 +514,10 @@ def serve_js(filename):
 
 ACTUAL_TABLE = "DataMart.MIS.FC213_FACT_ACT"
 DAILY_SALES_TABLE = "DataMart.MIS.DAILY_SALES"
+# Bảng budget: nguồn forecast cho CP0211 (Store D&A) và các mã con.
+# Cột: item_code_cty = mã chỉ tiêu, amount = số tiền, profit_center = mã nhà hàng,
+# budget_version = phiên bản budget (người dùng chọn khi chạy forecast).
+BUDGET_TABLE = os.environ.get('BUDGET_TABLE', 'DataMart.MIS.FC_FACT_BUD')
 
 
 def _month_range_for_datekey(datekey):
@@ -1810,6 +1814,17 @@ def compute_forecast_v2():
         # Tiền thuê CP0209 theo hợp đồng của từng profit center (import qua /api/rental/import).
         # Store có dữ liệu import → dùng số hợp đồng; store chưa có → fallback theo config (flat LM).
         rental_costs = _load_rental_costs()
+
+        # CP0211 (Store D&A) + mã con: lấy từ bảng budget FC_FACT_BUD theo budget_version
+        # người dùng chọn. Store/kỳ không có số budget → fallback theo config (flat LM).
+        budget_version = str(body.get('budget_version') or '').strip()
+        budget_data = {}
+        if budget_version:
+            try:
+                budget_data = _fetch_budget_amounts(conn, budget_version, selected_pcs, future_periods)
+                logger.info(f"[FORECAST/COMPUTE-V2] Budget '{budget_version}': CP0211 data for {len(budget_data)} stores")
+            except Exception as e:
+                logger.warning(f"[FORECAST/COMPUTE-V2] Budget fetch failed, fallback to config: {e}")
         default_growth = safe_float(params.get('growth_rate', 5.0)) / 100.0
         lookback = int(params.get('lookback', 3) or 3)
         # CP07 (Mgt. bonus = 8% lợi nhuận trước bonus) và CP08 (CIT = 20% SD08)
@@ -1901,6 +1916,17 @@ def compute_forecast_v2():
                 for code in tail_codes:
                     out[code] = _project(code)
 
+                # Ghi đè subtree CP0211 bằng số budget (FC_FACT_BUD) của store/kỳ này nếu có:
+                # xoá toàn bộ CP0211* đã forecast rồi đặt đúng các mã budget cung cấp —
+                # cha/cấp trung gian thiếu sẽ được tổng hợp lại từ con ở bước con→cha.
+                bud_by_period = budget_data.get(p) or {}
+                bud = bud_by_period.get(fp) or bud_by_period.get(None)
+                if bud:
+                    for k in [k for k in out if isinstance(k, str) and k.startswith('CP0211')]:
+                        del out[k]
+                    for code_b, amt in bud.items():
+                        out[code_b] = round(safe_float(amt), 2)
+
                 # Ghi đè CP0209 bằng tiền thuê hợp đồng đã import cho store này (nếu có).
                 # Scale các mã con CP0209xx theo cùng tỷ lệ để tổng con khớp số hợp đồng,
                 # vì _apply_pnl_formula_fields sẽ tính lại cha = tổng các con.
@@ -1955,6 +1981,10 @@ def compute_forecast_v2():
             'historical': [],
             'projections': projections,
             'restaurant_projections': restaurant_projections,
+            'budget': {
+                'version': budget_version or None,
+                'stores_covered': len(budget_data)
+            },
             'calibration': calibration,
             'calibration_scope': {
                 'selected_restaurants': len(selected_pcs),
@@ -2238,6 +2268,117 @@ def import_rental_costs():
     return jsonify({'status': 'ok', 'message': msg, 'imported': len(imported), 'rejected': len(rejected)})
 
 
+# ─── Budget table (FC_FACT_BUD): nguồn forecast CP0211 (Store D&A) ───
+_budget_period_col_cache = {'resolved': False, 'col': None}
+
+
+def _budget_period_column(conn):
+    """Tự phát hiện cột kỳ (yyyymm) của bảng budget qua INFORMATION_SCHEMA — cache 1 lần."""
+    if _budget_period_col_cache['resolved']:
+        return _budget_period_col_cache['col']
+    col = None
+    try:
+        parts = BUDGET_TABLE.split('.')
+        cursor = conn.cursor(as_dict=True)
+        if len(parts) == 3:
+            db, schema, table = parts
+            cursor.execute(
+                f"SELECT COLUMN_NAME FROM {db}.INFORMATION_SCHEMA.COLUMNS "
+                f"WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
+                (schema, table)
+            )
+        else:
+            cursor.execute(
+                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = %s",
+                (parts[-1],)
+            )
+        cols = {str(r['COLUMN_NAME']).strip().lower() for r in cursor.fetchall()}
+        cursor.close()
+        for cand in ('datekey', 'date_key', 'period', 'yyyymm', 'month_key', 'monthkey',
+                     'fiscal_period', 'budget_period'):
+            if cand in cols:
+                col = cand
+                break
+    except Exception as e:
+        logger.warning(f"[BUDGET] Could not inspect {BUDGET_TABLE} columns: {e}")
+    _budget_period_col_cache['col'] = col
+    _budget_period_col_cache['resolved'] = True
+    return col
+
+
+def _fetch_budget_versions(conn):
+    cursor = conn.cursor(as_dict=True)
+    cursor.execute(f"""
+        SELECT DISTINCT budget_version
+        FROM {BUDGET_TABLE}
+        WHERE budget_version IS NOT NULL
+    """)
+    rows = cursor.fetchall()
+    cursor.close()
+    return sorted({str(r['budget_version']).strip() for r in rows if r.get('budget_version')}, reverse=True)
+
+
+def _fetch_budget_amounts(conn, version, pcs, periods, code_prefix='CP0211'):
+    """Lấy số budget theo từng PC + item cho subtree code_prefix.
+    Trả về {pc: {datekey: {code: amount}}}; nếu bảng không có cột kỳ thì
+    datekey = None và áp cùng một số cho mọi kỳ forecast."""
+    if not pcs:
+        return {}
+    period_col = _budget_period_column(conn)
+    cursor = conn.cursor(as_dict=True)
+    pc_ph = ','.join(['%s'] * len(pcs))
+    if period_col:
+        pe_ph = ','.join(['%s'] * len(periods))
+        cursor.execute(f"""
+            SELECT profit_center AS pc, item_code_cty AS code, {period_col} AS dk,
+                   SUM(CAST(ISNULL(amount, 0) AS FLOAT)) AS total
+            FROM {BUDGET_TABLE}
+            WHERE budget_version = %s
+              AND item_code_cty LIKE %s
+              AND profit_center IN ({pc_ph})
+              AND {period_col} IN ({pe_ph})
+            GROUP BY profit_center, item_code_cty, {period_col}
+        """, tuple([version, code_prefix + '%'] + list(pcs) + list(periods)))
+    else:
+        cursor.execute(f"""
+            SELECT profit_center AS pc, item_code_cty AS code, NULL AS dk,
+                   SUM(CAST(ISNULL(amount, 0) AS FLOAT)) AS total
+            FROM {BUDGET_TABLE}
+            WHERE budget_version = %s
+              AND item_code_cty LIKE %s
+              AND profit_center IN ({pc_ph})
+            GROUP BY profit_center, item_code_cty
+        """, tuple([version, code_prefix + '%'] + list(pcs)))
+    rows = cursor.fetchall()
+    cursor.close()
+
+    out = {}
+    for r in rows:
+        pc = str(r['pc']).strip()
+        code = str(r['code']).strip().upper()
+        if not code.startswith(code_prefix):
+            continue
+        try:
+            dk = int(r['dk']) if r.get('dk') is not None else None
+        except (TypeError, ValueError):
+            dk = None
+        out.setdefault(pc, {}).setdefault(dk, {})[code] = safe_float(r['total'])
+    return out
+
+
+@app.route('/api/budget/versions', methods=['GET'])
+def get_budget_versions():
+    """Danh sách budget_version cho người dùng chọn khi chạy forecast."""
+    try:
+        conn = get_mssql_connection()
+        versions = _fetch_budget_versions(conn)
+        return jsonify({'status': 'ok', 'versions': versions})
+    except Exception as e:
+        logger.warning(f"[BUDGET] Could not list versions: {e}")
+        # Trả ok + rỗng để UI degrade nhẹ nhàng (ẩn dropdown) thay vì lỗi
+        return jsonify({'status': 'ok', 'versions': [], 'message': str(e)})
+
+
 @app.route('/api/forecast/formulas', methods=['POST'])
 def save_forecast_formulas():
     user = session.get('user') or {}
@@ -2423,11 +2564,23 @@ def _apply_pnl_formula_fields(row, recompute_parents=True):
         return total if vals and abs(total) > 0 else None
 
     if recompute_parents:
-        for prefix in (
-            'DT01', 'DT02', 'CP01',
-            'CP0201', 'CP0202', 'CP0203', 'CP0204', 'CP0205', 'CP0206',
-            'CP0207', 'CP0208', 'CP0209', 'CP0210', 'CP0211'
-        ):
+        # Đi từ line con lên line cha cho MỌI cấp của cây chỉ tiêu (mã con dài hơn
+        # cha 2 ký tự), xử lý cấp sâu nhất trước để tổng lan dần lên trên.
+        # Cha có con mang số liệu → cha = tổng các con trực tiếp (ghi đè method riêng
+        # của cha, vd DT04 ratio 0.38%). Cha không có con (store không hạch toán
+        # chi tiết) → giữ forecast theo method của cha làm fallback.
+        parent_prefixes = set()
+        for k in row:
+            if not isinstance(k, str) or len(k) < 6:
+                continue
+            if k[:2] not in ('DT', 'CP', 'SC') or k.endswith(('PT', 'PMS')):
+                continue
+            # Suy ra toàn bộ tổ tiên: CP02110301 → CP021103, CP0211, CP02
+            p_len = len(k) - 2
+            while p_len >= 4:
+                parent_prefixes.add(k[:p_len])
+                p_len -= 2
+        for prefix in sorted(parent_prefixes, key=len, reverse=True):
             child_sum = sum_direct_children(prefix)
             if child_sum is not None:
                 row[prefix] = child_sum
