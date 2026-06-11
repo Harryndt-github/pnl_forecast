@@ -10,7 +10,8 @@ import io
 import json
 import logging
 from logging.handlers import RotatingFileHandler
-from datetime import datetime, date
+import calendar
+from datetime import datetime, date, timedelta
 from functools import lru_cache
 
 # ─── Windows UTF-8 safety ───────────────────────────────────
@@ -680,6 +681,42 @@ def _fetch_daily_sales_tc_by_pc_period(conn, datekeys, pcs):
         pc = rcode_to_pc.get(str(row.get('RestaurantCode') or '').strip())
         if pc:
             out.setdefault(pc, {})[int(row['dk'])] = safe_float(row['total_tc'])
+    return out
+
+
+def _fetch_last28_tc_by_pc(conn, pcs):
+    """Trend 4 tuần: TC bình quân/ngày của 28 ngày gần nhất (đến hết hôm qua)
+    theo từng store, từ DAILY_SALES. Chỉ trả store có >= 14 ngày dữ liệu."""
+    rcode_to_pc = {}
+    for pc in pcs or []:
+        pc_str = str(pc).strip()
+        if len(pc_str) >= 4:
+            rcode_to_pc[pc_str[-4:]] = pc_str
+    if not rcode_to_pc:
+        return {}
+    end = date.today()  # exclusive → tính đến hết hôm qua, không dính ngày đang chạy dở
+    start = end - timedelta(days=28)
+    cursor = conn.cursor(as_dict=True)
+    placeholders = ', '.join(['%s'] * len(rcode_to_pc))
+    cursor.execute(f"""
+        SELECT RestaurantCode,
+               SUM(CAST(ISNULL(GuestsCount, 0) AS FLOAT)) AS total_tc,
+               COUNT(DISTINCT ShiftDate) AS days_cnt
+        FROM {DAILY_SALES_TABLE}
+        WHERE ShiftDate >= %s AND ShiftDate < %s
+          AND RestaurantCode IN ({placeholders})
+        GROUP BY RestaurantCode
+    """, tuple([start.isoformat(), end.isoformat()] + list(rcode_to_pc.keys())))
+    rows = cursor.fetchall()
+    cursor.close()
+
+    out = {}
+    for r in rows:
+        pc = rcode_to_pc.get(str(r.get('RestaurantCode') or '').strip())
+        days = int(r.get('days_cnt') or 0)
+        total = safe_float(r.get('total_tc'))
+        if pc and total > 0 and days >= 14:
+            out[pc] = total / days
     return out
 
 
@@ -1792,6 +1829,24 @@ def compute_forecast_v2():
             logger.warning(f"[FORECAST/COMPUTE-V2] Could not merge TC by restaurant: {e}")
 
         last_period = hist_periods[-1]
+        # Tháng hiện tại chưa kết thúc → actual mới có một phần tháng. KHÔNG được dùng
+        # làm base bình quân (sẽ kéo tụt forecast của mọi chỉ tiêu); loại khỏi lịch sử
+        # tính base nhưng vẫn neo kỳ forecast tại tháng hiện tại.
+        _now = datetime.now()
+        partial_period = last_period if last_period == _now.year * 100 + _now.month else None
+        if partial_period:
+            logger.info(f"[FORECAST/COMPUTE-V2] Period {partial_period} chưa kết thúc — loại khỏi base lịch sử")
+
+        # Trend 4 tuần gần nhất cho TC (rule Tài chính): TC bình quân/ngày của 28 ngày
+        # gần nhất × số ngày của tháng forecast. Store thiếu dữ liệu daily → fallback
+        # bình quân tháng (đã loại tháng dở).
+        try:
+            tc_daily_avg_by_pc = _fetch_last28_tc_by_pc(conn, selected_pcs)
+            logger.info(f"[FORECAST/COMPUTE-V2] 28-day TC trend available for {len(tc_daily_avg_by_pc)} stores")
+        except Exception as e:
+            tc_daily_avg_by_pc = {}
+            logger.warning(f"[FORECAST/COMPUTE-V2] Could not fetch 28-day TC trend: {e}")
+
         include_current_month = bool(body.get('include_current_month', True))
         future_periods = []
         y, m = last_period // 100, last_period % 100
@@ -1835,6 +1890,8 @@ def compute_forecast_v2():
         for p in selected_pcs:
             store_hist = []
             for dk in hist_periods:
+                if dk == partial_period:
+                    continue  # tháng dở không được làm base
                 row = {'datekey': dk}
                 row.update(hist_by_pc.get(p, {}).get(dk, {}))
                 store_hist.append(row)
@@ -1894,6 +1951,12 @@ def compute_forecast_v2():
                         return round(lm_val * ((1 - var_share) + var_share * rev_ratio), 2)
                     elif method == 'rolling4w':
                         adj = safe_float(cfg.get('rolling4w_adjustment', default_growth * 100)) / 100.0
+                        if code == 'TC':
+                            daily_avg = tc_daily_avg_by_pc.get(p)
+                            if daily_avg:
+                                # Trend 4 tuần × số ngày tháng forecast (rule: trend 4 tuần gần nhất)
+                                days_in_month = calendar.monthrange(fp // 100, fp % 100)[1]
+                                return round(daily_avg * days_in_month * ((1 + adj) ** growth_period), 2)
                         return round(base * ((1 + adj) ** growth_period), 2)
                     else:
                         growth = safe_float(cfg.get('growth_rate', default_growth * 100)) / 100.0
