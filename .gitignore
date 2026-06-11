@@ -27,5 +27,6 @@ env/
 
 # App data dumps and test/benchmark data
 saved_reports.json
+rental_costs.json
 data/
 

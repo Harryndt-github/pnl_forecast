@@ -110,6 +110,14 @@ def check_auth():
             if not email.endswith('@ggg.com.vn'):
                 return jsonify({'status': 'error', 'message': 'Forbidden. GGG emails only.', 'code': 'FORBIDDEN'}), 403
 
+
+def _require_admin():
+    """Return a 403 response if the current session user is not admin, else None."""
+    user = session.get('user') or {}
+    if user.get('role') != 'admin':
+        return jsonify({'status': 'error', 'message': 'Chỉ admin mới có quyền thực hiện thao tác này'}), 403
+    return None
+
 # ─── Auth Routes ───
 @app.route('/api/auth/login')
 def auth_login_page():
@@ -1395,6 +1403,14 @@ def compute_forecast():
         chain     : (optional) chain prefix
         params    : { growth_rate, fixed_values, anchor_period, ... }
     """
+    # DEPRECATED: this endpoint forecasts on chain/company-aggregated actuals
+    # (top-down), which violates the store-first policy, and it accepted
+    # arbitrary item_configs from the request body. Use /api/forecast/compute-v2
+    # (bottom-up per store, locked formulas) instead.
+    return jsonify({
+        'status': 'error',
+        'message': 'Endpoint deprecated — use /api/forecast/compute-v2 (bottom-up per store)'
+    }), 410
     try:
         body = request.get_json() or {}
         horizon = body.get('horizon', 1)
@@ -1785,11 +1801,20 @@ def compute_forecast_v2():
             future_periods.append(fy * 100 + fm)
 
         params = body.get('params') or {}
+        # Formula logic is LOCKED: forecast_formulas.json is the single source of
+        # truth (per the approved Finance rule file). Runtime overrides sent in the
+        # request body are ignored so no client can change forecast logic by hand.
         item_configs = _load_forecast_formula_configs()
-        item_configs.update(body.get('item_configs') or {})
+        if body.get('item_configs'):
+            logger.warning("[FORECAST/COMPUTE-V2] Ignored item_configs override from request body (formula config is locked)")
+        # Tiền thuê CP0209 theo hợp đồng của từng profit center (import qua /api/rental/import).
+        # Store có dữ liệu import → dùng số hợp đồng; store chưa có → fallback theo config (flat LM).
+        rental_costs = _load_rental_costs()
         default_growth = safe_float(params.get('growth_rate', 5.0)) / 100.0
         lookback = int(params.get('lookback', 3) or 3)
-        formula_codes = {'TA', 'SD01', 'SD02', 'SD03', 'SD04', 'SD05', 'SD07', 'SD08', 'SD09', 'SD10', 'SD11'}
+        # CP07 (Mgt. bonus = 8% lợi nhuận trước bonus) và CP08 (CIT = 20% SD08)
+        # là dòng công thức — luôn tính trong _apply_pnl_formula_fields, không forecast trực tiếp.
+        formula_codes = {'TA', 'SD01', 'SD02', 'SD03', 'SD04', 'SD05', 'SD07', 'SD08', 'SD09', 'SD10', 'SD11', 'CP07', 'CP08'}
 
         restaurant_projections = {}
         for p in selected_pcs:
@@ -1799,20 +1824,24 @@ def compute_forecast_v2():
                 row.update(hist_by_pc.get(p, {}).get(dk, {}))
                 store_hist.append(row)
             store_proj = []
+            # Deterministic order: TC and DT01 are projected first because
+            # percent_revenue items depend on the projected DT01 of the same period.
+            forecastable = sorted(c for c in codes if c not in formula_codes)
+            head_codes = [c for c in ('TC', 'DT01') if c in forecastable]
+            tail_codes = [c for c in forecastable if c not in ('TC', 'DT01')]
             for idx, fp in enumerate(future_periods):
                 out = {'datekey': fp}
-                for code in codes:
-                    if code in formula_codes:
-                        continue
+                growth_period = idx if include_current_month else idx + 1
+
+                def _project(code):
                     vals = [safe_float(r.get(code, 0)) for r in store_hist if code in r]
                     recent = vals[-lookback:] if vals else []
                     base = sum(recent) / len(recent) if recent else 0.0
                     cfg = item_configs.get(code, {})
-                    growth_period = idx if include_current_month else idx + 1
                     method = cfg.get('method', 'historical')
 
                     if method == 'fixed':
-                        out[code] = round(safe_float(cfg.get('fixed_value', base)), 2)
+                        return round(safe_float(cfg.get('fixed_value', base)), 2)
                     elif method == 'anchor':
                         try:
                             anchor = int(cfg.get('anchor_period') or 0)
@@ -1822,32 +1851,71 @@ def compute_forecast_v2():
                         anchor_val = safe_float(anchor_row.get(code, 0)) if anchor_row else (vals[-1] if vals else 0.0)
                         multiplier = safe_float(cfg.get('multiplier', 1.0))
                         buffer_val = safe_float(cfg.get('buffer', 0))
-                        out[code] = round(anchor_val * multiplier + buffer_val, 2)
+                        return round(anchor_val * multiplier + buffer_val, 2)
                     elif method == 'percent_revenue':
-                        ratio_vals = []
-                        for r in store_hist[-lookback:]:
-                            rev = safe_float(r.get('DT01', 0))
-                            if rev:
-                                ratio_vals.append(safe_float(r.get(code, 0)) / rev)
-                        ratio = sum(ratio_vals) / len(ratio_vals) if ratio_vals else 0.0
-                        out[code] = round(safe_float(out.get('DT01', 0)) * ratio, 2)
+                        if cfg.get('ratio_percent') is not None:
+                            # Tỷ lệ cố định trên doanh thu (vd DT03 = 0.95% bình quân 2025)
+                            ratio = safe_float(cfg.get('ratio_percent')) / 100.0
+                        else:
+                            # %LM: lookback=1 lấy tỷ lệ trên doanh thu của tháng gần nhất
+                            pr_lookback = int(cfg.get('lookback', lookback) or lookback)
+                            ratio_vals = []
+                            for r in store_hist[-pr_lookback:]:
+                                rev = safe_float(r.get('DT01', 0))
+                                if rev:
+                                    ratio_vals.append(safe_float(r.get(code, 0)) / rev)
+                            ratio = sum(ratio_vals) / len(ratio_vals) if ratio_vals else 0.0
+                        return round(safe_float(out.get('DT01', 0)) * ratio, 2)
+                    elif method == 'fixed_variable':
+                        # "Variable tháng T + fix tháng T": phần fix giữ nguyên mức tháng gần nhất
+                        # của chính store đó; phần variable scale theo doanh thu dự phóng / doanh thu
+                        # tháng gần nhất. variable_percent = tỷ trọng biến phí (0-100).
+                        var_share = min(max(safe_float(cfg.get('variable_percent', 50)) / 100.0, 0.0), 1.0)
+                        lm_row = next((r for r in reversed(store_hist) if code in r), None)
+                        lm_val = safe_float(lm_row.get(code, 0)) if lm_row else 0.0
+                        lm_rev = safe_float(lm_row.get('DT01', 0)) if lm_row else 0.0
+                        proj_rev = safe_float(out.get('DT01', 0))
+                        rev_ratio = (proj_rev / lm_rev) if lm_rev > 0 else 1.0
+                        return round(lm_val * ((1 - var_share) + var_share * rev_ratio), 2)
                     elif method == 'rolling4w':
                         adj = safe_float(cfg.get('rolling4w_adjustment', default_growth * 100)) / 100.0
-                        out[code] = round(base * ((1 + adj) ** growth_period), 2)
+                        return round(base * ((1 + adj) ** growth_period), 2)
                     else:
                         growth = safe_float(cfg.get('growth_rate', default_growth * 100)) / 100.0
                         cfg_lookback = int(cfg.get('lookback', lookback) or lookback)
                         cfg_vals = vals[-cfg_lookback:] if vals else []
                         cfg_base = sum(cfg_vals) / len(cfg_vals) if cfg_vals else base
-                        out[code] = round(cfg_base * ((1 + growth) ** growth_period), 2)
+                        return round(cfg_base * ((1 + growth) ** growth_period), 2)
+
+                for code in head_codes:
+                    out[code] = _project(code)
 
                 tc = safe_float(out.get('TC', 0))
-                if tc:
+                if tc and not safe_float(out.get('DT01', 0)):
                     ta_vals = [safe_float(r.get('TA', 0)) for r in store_hist if safe_float(r.get('TA', 0)) > 0]
                     ta_recent = ta_vals[-lookback:] if ta_vals else []
                     ta_base = sum(ta_recent) / len(ta_recent) if ta_recent else 0.0
-                    if ta_base and not safe_float(out.get('DT01', 0)):
+                    if ta_base:
                         out['DT01'] = round(tc * ta_base, 2)
+
+                for code in tail_codes:
+                    out[code] = _project(code)
+
+                # Ghi đè CP0209 bằng tiền thuê hợp đồng đã import cho store này (nếu có).
+                # Scale các mã con CP0209xx theo cùng tỷ lệ để tổng con khớp số hợp đồng,
+                # vì _apply_pnl_formula_fields sẽ tính lại cha = tổng các con.
+                rent = rental_costs.get(p)
+                if rent is not None and rent > 0:
+                    child_keys = [k for k in out
+                                  if isinstance(k, str) and len(k) == 8 and k.startswith('CP0209')
+                                  and not k.endswith(('PT', 'PMS'))]
+                    child_sum = sum(safe_float(out[k]) for k in child_keys)
+                    if child_keys and child_sum:
+                        factor = rent / child_sum
+                        for k in child_keys:
+                            out[k] = round(safe_float(out[k]) * factor, 2)
+                    out['CP0209'] = round(rent, 2)
+
                 store_proj.append(_apply_pnl_formula_fields(out))
             restaurant_projections[p] = store_proj
 
@@ -1865,7 +1933,7 @@ def compute_forecast_v2():
                 if code in ('datekey', 'TA'):
                     continue
                 roll[code] = round(sum(safe_float(v[idx].get(code, 0)) for v in restaurant_projections.values()), 2)
-            roll = _apply_pnl_formula_fields(roll)
+            roll = _apply_pnl_formula_fields(roll, recompute_parents=False)
             if should_calibrate_to_excel:
                 roll = _apply_benchmark_overrides(roll, fp)
             projections.append(roll)
@@ -1911,6 +1979,7 @@ def compute_forecast_v2():
 SAVED_REPORTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'saved_reports.json')
 FORECAST_ARCHIVE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'forecast_period_archive.json')
 FORECAST_FORMULAS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'forecast_formulas.json')
+RENTAL_COSTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rental_costs.json')
 FORECAST_BENCHMARK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'forecast_excel_benchmark.json')
 
 
@@ -1922,6 +1991,277 @@ def _load_forecast_formula_configs():
         except Exception as e:
             logger.warning(f"[FORECAST_FORMULAS] Load failed: {e}")
     return {}
+
+
+# Forecast logic is locked by default: forecast_formulas.json on the server is the
+# single source of truth, maintained per the approved Finance rule file
+# (Gop_y_Fin_rule_TC_forecast.xlsx). Set ALLOW_FORMULA_EDIT=true in the environment
+# only for a deliberate, temporary unlock.
+FORMULA_EDIT_UNLOCKED = os.environ.get('ALLOW_FORMULA_EDIT', 'false').strip().lower() == 'true'
+
+
+@app.route('/api/forecast/formulas', methods=['GET'])
+def get_forecast_formulas():
+    meta = {}
+    if os.path.exists(FORECAST_FORMULAS_FILE):
+        try:
+            with open(FORECAST_FORMULAS_FILE, 'r', encoding='utf-8') as f:
+                meta = json.load(f) or {}
+        except Exception as e:
+            logger.warning(f"[FORECAST_FORMULAS] Load failed: {e}")
+    role = (session.get('user') or {}).get('role')
+    return jsonify({
+        'status': 'ok',
+        'locked': not FORMULA_EDIT_UNLOCKED,
+        'can_edit_variable_split': role in ('admin', 'manager'),
+        'updated_at': meta.get('updated_at'),
+        'updated_by': meta.get('updated_by'),
+        'formulas': meta.get('formulas', {})
+    })
+
+
+@app.route('/api/forecast/formulas/variable-split', methods=['POST'])
+def update_variable_split():
+    """Carve-out duy nhất khỏi cơ chế khoá công thức: manager (hoặc admin) được
+    quyết định tỷ trọng biến phí/định phí (variable_percent) của các item
+    fixed_variable. Method và mọi tham số khác vẫn khoá."""
+    user = session.get('user') or {}
+    if user.get('role') not in ('admin', 'manager'):
+        return jsonify({'status': 'error', 'message': 'Chỉ manager hoặc admin được chỉnh tỷ trọng biến phí'}), 403
+    body = request.get_json() or {}
+    splits = body.get('splits')
+    if not isinstance(splits, dict) or not splits:
+        return jsonify({'status': 'error', 'message': 'Missing splits payload'}), 400
+
+    meta = {}
+    if os.path.exists(FORECAST_FORMULAS_FILE):
+        try:
+            with open(FORECAST_FORMULAS_FILE, 'r', encoding='utf-8') as f:
+                meta = json.load(f) or {}
+        except Exception as e:
+            logger.error(f"[FORECAST_FORMULAS] Load failed: {e}")
+            return jsonify({'status': 'error', 'message': 'Không đọc được file công thức'}), 500
+    formulas = meta.get('formulas', {})
+
+    updated, rejected = [], []
+    for code, pct in splits.items():
+        cfg = formulas.get(str(code))
+        if not cfg or cfg.get('method') != 'fixed_variable':
+            rejected.append(f"{code}: không phải item Fix+Variable")
+            continue
+        try:
+            val = float(pct)
+        except (TypeError, ValueError):
+            rejected.append(f"{code}: giá trị không hợp lệ")
+            continue
+        if not 0 <= val <= 100:
+            rejected.append(f"{code}: phải nằm trong 0–100")
+            continue
+        cfg['variable_percent'] = round(val, 1)
+        updated.append(code)
+
+    if not updated:
+        return jsonify({'status': 'error', 'message': '; '.join(rejected) or 'Không có item hợp lệ'}), 400
+
+    meta['updated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    meta['updated_by'] = f"{user.get('username') or user.get('email')} (variable split)"
+    with open(FORECAST_FORMULAS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+    logger.info(f"[FORECAST_FORMULAS] Variable split updated for {updated} by '{meta['updated_by']}'")
+    msg = f"Đã cập nhật tỷ trọng biến phí cho {len(updated)} item"
+    if rejected:
+        msg += f" (bỏ qua: {'; '.join(rejected)})"
+    return jsonify({'status': 'ok', 'message': msg, 'updated': updated})
+
+
+# ─── Rental costs (CP0209) per profit center ───
+def _load_rental_costs():
+    """Return {pc: monthly_rent_amount} from the imported rental file."""
+    if os.path.exists(RENTAL_COSTS_FILE):
+        try:
+            with open(RENTAL_COSTS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f) or {}
+            return {str(pc): safe_float(info.get('amount'))
+                    for pc, info in (data.get('costs') or {}).items()}
+        except Exception as e:
+            logger.warning(f"[RENTAL] Load failed: {e}")
+    return {}
+
+
+@app.route('/api/rental/costs', methods=['GET'])
+def get_rental_costs():
+    meta = {}
+    if os.path.exists(RENTAL_COSTS_FILE):
+        try:
+            with open(RENTAL_COSTS_FILE, 'r', encoding='utf-8') as f:
+                meta = json.load(f) or {}
+        except Exception as e:
+            logger.warning(f"[RENTAL] Load failed: {e}")
+    return jsonify({
+        'status': 'ok',
+        'updated_at': meta.get('updated_at'),
+        'updated_by': meta.get('updated_by'),
+        'count': len(meta.get('costs') or {}),
+        'costs': meta.get('costs', {})
+    })
+
+
+@app.route('/api/rental/template', methods=['GET'])
+def download_rental_template():
+    """Excel template: danh sách PC đang ACTIVE + tiền thuê hiện có (nếu đã import)."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    import io
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Rental CP0209"
+
+    header_font = Font(bold=True, color='FFFFFF')
+    header_fill = PatternFill(start_color='1F4E78', end_color='1F4E78', fill_type='solid')
+    ws.append(["PC Code", "Tên nhà hàng (tham khảo)", "Tiền thuê/tháng (VND)", "Ghi chú"])
+    for col_idx, cell in enumerate(ws[1], 1):
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center')
+        ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = (18, 40, 22, 30)[col_idx - 1]
+
+    current = {}
+    if os.path.exists(RENTAL_COSTS_FILE):
+        try:
+            with open(RENTAL_COSTS_FILE, 'r', encoding='utf-8') as f:
+                current = (json.load(f) or {}).get('costs', {})
+        except Exception:
+            pass
+    try:
+        master = _read_master_excel()
+    except Exception as e:
+        logger.warning(f"[RENTAL] Master list unavailable for template: {e}")
+        master = []
+    for r in master:
+        if r.get('status') != 'ACTIVE':
+            continue
+        pc = r['pc']
+        cur = current.get(pc) or {}
+        ws.append([pc, r.get('store', ''), cur.get('amount', ''), cur.get('note', '')])
+
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    return send_file(
+        out,
+        download_name='Rental_CP0209_Template.xlsx',
+        as_attachment=True,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+
+
+@app.route('/api/rental/import', methods=['POST'])
+def import_rental_costs():
+    """Import tiền thuê CP0209 theo từng profit center từ file Excel.
+    Quyền: manager hoặc admin. Merge theo PC — chỉ các PC có trong file bị cập nhật."""
+    import openpyxl
+
+    user = session.get('user') or {}
+    if user.get('role') not in ('admin', 'manager'):
+        return jsonify({'status': 'error', 'message': 'Chỉ manager hoặc admin được import tiền thuê'}), 403
+    upload = request.files.get('file')
+    if not upload or not upload.filename:
+        return jsonify({'status': 'error', 'message': 'Chưa chọn file Excel (.xlsx)'}), 400
+    if not upload.filename.lower().endswith('.xlsx'):
+        return jsonify({'status': 'error', 'message': 'Chỉ chấp nhận file .xlsx (theo template)'}), 400
+
+    try:
+        wb = openpyxl.load_workbook(upload.stream, read_only=True, data_only=True)
+        ws = wb.active
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Không đọc được file Excel: {e}'}), 400
+
+    try:
+        valid_pcs = {r['pc'] for r in _read_master_excel()}
+    except Exception as e:
+        logger.warning(f"[RENTAL] Master list unavailable, skipping PC validation: {e}")
+        valid_pcs = None
+
+    meta = {}
+    if os.path.exists(RENTAL_COSTS_FILE):
+        try:
+            with open(RENTAL_COSTS_FILE, 'r', encoding='utf-8') as f:
+                meta = json.load(f) or {}
+        except Exception:
+            meta = {}
+    costs = meta.get('costs') or {}
+
+    imported, rejected = [], []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not row or row[0] is None:
+            continue
+        pc = str(row[0]).strip()
+        if not pc:
+            continue
+        raw_amount = row[2] if len(row) > 2 else None
+        note = str(row[3]).strip() if len(row) > 3 and row[3] is not None else ''
+        if raw_amount is None or str(raw_amount).strip() == '':
+            continue  # dòng không nhập tiền thuê → giữ nguyên, không phải lỗi
+        if valid_pcs is not None and pc not in valid_pcs:
+            rejected.append(f"{pc}: không có trong master")
+            continue
+        try:
+            amount = float(str(raw_amount).replace(',', '').strip())
+        except ValueError:
+            rejected.append(f"{pc}: tiền thuê không hợp lệ ({raw_amount})")
+            continue
+        if amount < 0:
+            rejected.append(f"{pc}: tiền thuê âm")
+            continue
+        costs[pc] = {'amount': round(amount, 2), 'note': note}
+        imported.append(pc)
+
+    if not imported:
+        msg = 'Không có dòng hợp lệ nào trong file'
+        if rejected:
+            msg += f" ({'; '.join(rejected[:10])})"
+        return jsonify({'status': 'error', 'message': msg}), 400
+
+    meta['updated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    meta['updated_by'] = user.get('username') or user.get('email') or 'unknown'
+    meta['costs'] = costs
+    with open(RENTAL_COSTS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+    logger.info(f"[RENTAL] Imported rent for {len(imported)} PCs by '{meta['updated_by']}' ({len(rejected)} rejected)")
+
+    msg = f"Đã import tiền thuê cho {len(imported)} nhà hàng (tổng {len(costs)} PC có dữ liệu)"
+    if rejected:
+        msg += f". Bỏ qua {len(rejected)} dòng: {'; '.join(rejected[:10])}"
+        if len(rejected) > 10:
+            msg += f" … (+{len(rejected) - 10} dòng khác)"
+    return jsonify({'status': 'ok', 'message': msg, 'imported': len(imported), 'rejected': len(rejected)})
+
+
+@app.route('/api/forecast/formulas', methods=['POST'])
+def save_forecast_formulas():
+    user = session.get('user') or {}
+    if user.get('role') != 'admin':
+        return jsonify({'status': 'error', 'message': 'Chỉ admin mới có quyền lưu công thức'}), 403
+    if not FORMULA_EDIT_UNLOCKED:
+        logger.warning(f"[FORECAST_FORMULAS] Blocked manual formula edit attempt by '{user.get('username') or user.get('email')}'")
+        return jsonify({
+            'status': 'error',
+            'message': 'Logic forecast đã bị khoá theo rule Tài chính. Muốn thay đổi: cập nhật forecast_formulas.json trên server và đặt ALLOW_FORMULA_EDIT=true tạm thời.'
+        }), 403
+    body = request.get_json() or {}
+    formulas = body.get('formulas')
+    if not isinstance(formulas, dict) or not formulas:
+        return jsonify({'status': 'error', 'message': 'Missing formulas payload'}), 400
+    payload = {
+        'updated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'updated_by': user.get('username') or user.get('email') or 'admin',
+        'formulas': formulas
+    }
+    with open(FORECAST_FORMULAS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    logger.info(f"[FORECAST_FORMULAS] Saved {len(formulas)} formulas by '{payload['updated_by']}'")
+    return jsonify({'status': 'ok', 'message': f'Đã lưu {len(formulas)} công thức'})
 
 
 def _load_forecast_benchmark():
@@ -2058,8 +2398,13 @@ def _calibrate_restaurant_projections_to_benchmark(restaurant_projections, formu
     return calibration
 
 
-def _apply_pnl_formula_fields(row):
-    """Recompute Excel-style formula rows instead of forecasting them directly."""
+def _apply_pnl_formula_fields(row, recompute_parents=True):
+    """Recompute Excel-style formula rows instead of forecasting them directly.
+
+    recompute_parents=False cho dòng rollup (chuỗi/All): mỗi store đã tự nhất quán
+    cha = tổng con, nên cấp tổng chỉ cần tin số cha đã cộng từ các store. Nếu tính
+    lại cha-từ-con ở cấp tổng, store chỉ hạch toán ở cấp cha (không có mã con)
+    sẽ bị mất giá trị."""
     def v(code):
         return safe_float(row.get(code, 0))
 
@@ -2077,14 +2422,15 @@ def _apply_pnl_formula_fields(row):
         total = round(sum(vals), 2) if vals else 0.0
         return total if vals and abs(total) > 0 else None
 
-    for prefix in (
-        'DT01', 'DT02', 'CP01',
-        'CP0201', 'CP0202', 'CP0203', 'CP0204', 'CP0205', 'CP0206',
-        'CP0207', 'CP0208', 'CP0209', 'CP0210', 'CP0211'
-    ):
-        child_sum = sum_direct_children(prefix)
-        if child_sum is not None:
-            row[prefix] = child_sum
+    if recompute_parents:
+        for prefix in (
+            'DT01', 'DT02', 'CP01',
+            'CP0201', 'CP0202', 'CP0203', 'CP0204', 'CP0205', 'CP0206',
+            'CP0207', 'CP0208', 'CP0209', 'CP0210', 'CP0211'
+        ):
+            child_sum = sum_direct_children(prefix)
+            if child_sum is not None:
+                row[prefix] = child_sum
 
     row['TA'] = round(v('DT01') / v('TC'), 2) if v('TC') else 0.0
     row['SD01'] = round(v('DT01') - v('DT02'), 2)
@@ -2099,7 +2445,10 @@ def _apply_pnl_formula_fields(row):
 
     row['SD03'] = round(v('SD02') - v('CP02'), 2)
     row['SD04'] = round(v('SD03') - v('CP0211'), 2)
-    row['SD08'] = round(v('SD04') + v('DT03') - v('CP05') + v('DT04') - v('CP06') - v('CP07'), 2)
+    # CP07 Mgt. bonus = 8% lợi nhuận trước bonus (rule Tài chính), chỉ tính khi có lãi
+    profit_before_bonus = round(v('SD04') + v('DT03') - v('CP05') + v('DT04') - v('CP06'), 2)
+    row['CP07'] = round(profit_before_bonus * 0.08, 2) if profit_before_bonus > 0 else 0.0
+    row['SD08'] = round(profit_before_bonus - v('CP07'), 2)
     row['CP08'] = round(v('SD08') * 0.20, 2) if v('SD08') > 0 else 0.0
     row['SD09'] = round(v('SD08') - v('CP08'), 2)
     row['SD10'] = round(v('SD09') + v('CP0211'), 2)
@@ -2152,7 +2501,7 @@ def _rollup_restaurant_period_rows(rest_rows):
             row[key] = round(safe_float(row.get(key, 0)) + safe_float(value), 2)
     tc = safe_float(row.get('TC', 0))
     row['TA'] = round(safe_float(row.get('DT01', 0)) / tc, 2) if tc else 0.0
-    return _apply_pnl_formula_fields(row)
+    return _apply_pnl_formula_fields(row, recompute_parents=False)
 
 
 def _archive_report_by_period(report):
@@ -2293,8 +2642,15 @@ def save_forecast_report():
 
 @app.route('/api/forecast/reports/<int:report_id>', methods=['DELETE'])
 def delete_forecast_report(report_id):
-    reports = [r for r in _load_saved_reports() if r.get('id') != report_id]
-    _save_reports_to_file(reports)
+    user = session.get('user') or {}
+    reports = _load_saved_reports()
+    target = next((r for r in reports if r.get('id') == report_id), None)
+    if not target:
+        return jsonify({'status': 'error', 'message': 'Report not found'}), 404
+    if user.get('role') != 'admin' and target.get('savedBy') != user.get('username'):
+        return jsonify({'status': 'error', 'message': 'Chỉ admin hoặc người tạo báo cáo mới được xoá'}), 403
+    _save_reports_to_file([r for r in reports if r.get('id') != report_id])
+    logger.info(f"[SAVED_REPORTS] Report {report_id} deleted by '{user.get('username')}'")
     return jsonify({'status': 'ok', 'message': 'Deleted'})
 
 
@@ -2320,6 +2676,9 @@ def reconcile_forecast():
 @app.route('/api/system/reset-temp', methods=['POST'])
 def reset_temp_data():
     """Clear server-side temporary forecast data while keeping master Excel intact."""
+    denied = _require_admin()
+    if denied:
+        return denied
     _cache_bust()
     _save_reports_to_file([])
     return jsonify({
@@ -2425,6 +2784,9 @@ def health_check():
 @app.route('/api/cache/bust', methods=['POST'])
 def bust_cache():
     """Invalidate all cached responses (call when user clicks 'Cập nhật')."""
+    denied = _require_admin()
+    if denied:
+        return denied
     _cache_bust()
     _master_cache['data'] = None
     _master_cache['loaded_at'] = None

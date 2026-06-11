@@ -25,7 +25,8 @@ const Forecast = {
             const res = await fetch('/api/auth/me');
             if (res.ok) {
                 const data = await res.json();
-                this.isAdmin = data.user?.role === 'admin';
+                this.userRole = data.user?.role || 'user';
+                this.isAdmin = this.userRole === 'admin';
             }
         } catch(e) {}
 
@@ -34,15 +35,66 @@ const Forecast = {
         this.renderLineItems();
         this.selectItem(FORECAST_ITEMS[0]);
 
-        // Show/hide admin save button
+        // Show/hide admin save button (hidden khi logic bị khoá)
         const saveBtn = document.getElementById('btnSaveFormulas');
-        if (saveBtn) saveBtn.style.display = this.isAdmin ? '' : 'none';
+        if (saveBtn) saveBtn.style.display = (this.isAdmin && !this.formulasLocked) ? '' : 'none';
+
+        // Khoá UI chỉnh logic: công thức chỉ theo forecast_formulas.json trên server
+        if (this.formulasLocked) this._applyFormulaLock();
+
+        // Import tiền thuê CP0209 (Manager/Admin) — dữ liệu hợp đồng, không phải logic
+        this._setupRentalImport();
     },
+
+    userRole: 'user',
+
+    _setupRentalImport() {
+        const canImport = ['admin', 'manager'].includes(this.userRole);
+        const tplBtn = document.getElementById('btnRentalTemplate');
+        const impBtn = document.getElementById('btnImportRental');
+        const fileInput = document.getElementById('rentalFileInput');
+        if (tplBtn) {
+            tplBtn.style.display = canImport ? '' : 'none';
+            tplBtn.addEventListener('click', () => {
+                window.open(`${API_BASE}/api/rental/template`, '_blank');
+            });
+        }
+        if (impBtn && fileInput) {
+            impBtn.style.display = canImport ? '' : 'none';
+            impBtn.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', () => this.uploadRentalFile(fileInput));
+        }
+    },
+
+    async uploadRentalFile(input) {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+            const resp = await fetch(`${API_BASE}/api/rental/import`, { method: 'POST', body: fd });
+            const json = await resp.json();
+            if (json.status === 'ok') {
+                Utils.toast(`📥 ${json.message}`, 'success');
+            } else {
+                Utils.toast(json.message || 'Lỗi import tiền thuê', 'error');
+            }
+        } catch(e) {
+            Utils.toast('Lỗi kết nối server', 'error');
+        }
+        input.value = '';
+    },
+
+    formulasLocked: true,
+    canEditVariableSplit: false,
+    _splitEdits: {},
 
     async loadFormulasFromServer() {
         try {
             const resp = await fetch(`${API_BASE}/api/forecast/formulas`);
             const json = await resp.json();
+            this.formulasLocked = json.locked !== false;
+            this.canEditVariableSplit = !!json.can_edit_variable_split;
             if (json.status === 'ok' && json.formulas) {
                 const formulas = json.formulas;
                 FORECAST_ITEMS.forEach(item => {
@@ -70,7 +122,88 @@ const Forecast = {
         }
     },
 
+    _applyFormulaLock() {
+        // Vô hiệu hoá toàn bộ control chỉnh logic — server chỉ dùng forecast_formulas.json
+        const cfg = document.getElementById('formulaConfig');
+        if (cfg) {
+            cfg.querySelectorAll('input, select, button, textarea').forEach(el => { el.disabled = true; });
+            cfg.style.opacity = '0.75';
+        }
+        ['resetFormula', 'applyFormula'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) { el.disabled = true; el.title = 'Logic forecast đã bị khoá theo rule Tài chính'; }
+        });
+        const canvas = document.getElementById('formulaCanvas');
+        if (canvas && !document.getElementById('formulaLockNotice')) {
+            const note = document.createElement('div');
+            note.id = 'formulaLockNotice';
+            note.style.cssText = 'margin:0 0 0.75rem;padding:0.5rem 0.75rem;border:1px solid #f0c36d;background:#fff8e5;border-radius:6px;font-size:0.8rem;color:#7a5c00;';
+            note.textContent = this.canEditVariableSplit
+                ? '🔒 Logic forecast được khoá theo rule Tài chính đã duyệt. Với quyền Manager, bạn chỉ được chỉnh tỷ trọng biến phí/định phí của các item Fix+Variable.'
+                : '🔒 Logic forecast được khoá theo rule Tài chính đã duyệt (forecast_formulas.json). Màn hình này chỉ để xem; liên hệ quản trị hệ thống để thay đổi công thức.';
+            canvas.insertBefore(note, canvas.firstChild);
+        }
+
+        // Carve-out cho manager/admin: chỉ slider tỷ trọng biến phí được mở
+        if (this.canEditVariableSplit) {
+            const slider = document.getElementById('fvVariablePercent');
+            if (slider) {
+                slider.disabled = false;
+                slider.addEventListener('change', () => {
+                    const item = this.selectedItem;
+                    if (item && item.method === 'fixed_variable') {
+                        const val = parseFloat(slider.value);
+                        item.variable_percent = val;
+                        this._splitEdits[item.code] = val;
+                        const btn = document.getElementById('btnSaveVariableSplit');
+                        if (btn) btn.textContent = `💾 Lưu tỷ trọng biến phí (${Object.keys(this._splitEdits).length})`;
+                    }
+                });
+            }
+            const actions = document.querySelector('.formula-actions');
+            if (actions && !document.getElementById('btnSaveVariableSplit')) {
+                const btn = document.createElement('button');
+                btn.id = 'btnSaveVariableSplit';
+                btn.className = 'btn btn-primary';
+                btn.textContent = '💾 Lưu tỷ trọng biến phí';
+                btn.title = 'Lưu tỷ trọng biến phí/định phí đã chỉnh (Manager/Admin)';
+                btn.addEventListener('click', () => this.saveVariableSplit());
+                actions.appendChild(btn);
+            }
+        }
+    },
+
+    async saveVariableSplit() {
+        const codes = Object.keys(this._splitEdits);
+        if (!codes.length) {
+            Utils.toast('Chưa có thay đổi tỷ trọng nào để lưu', 'info');
+            return;
+        }
+        try {
+            const resp = await fetch(`${API_BASE}/api/forecast/formulas/variable-split`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ splits: this._splitEdits })
+            });
+            const json = await resp.json();
+            if (json.status === 'ok') {
+                Utils.toast(`💾 ${json.message}`, 'success');
+                this._splitEdits = {};
+                const btn = document.getElementById('btnSaveVariableSplit');
+                if (btn) btn.textContent = '💾 Lưu tỷ trọng biến phí';
+            } else {
+                Utils.toast(json.message || 'Lỗi lưu tỷ trọng', 'error');
+            }
+        } catch(e) {
+            Utils.toast('Lỗi kết nối server', 'error');
+        }
+    },
+
     async saveAllFormulas() {
+        if (this.formulasLocked) {
+            Utils.toast('🔒 Logic forecast đã bị khoá — không thể chỉnh tay', 'error');
+            return;
+        }
         if (!this.isAdmin) {
             Utils.toast('Chỉ admin mới có quyền lưu công thức', 'error');
             return;

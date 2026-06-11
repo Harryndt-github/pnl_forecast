@@ -621,14 +621,14 @@
                             <!-- Fixed + Variable Options -->
                             <div class="config-params hidden" id="paramsFixedVariable">
                                 <div class="config-group">
-                                    <label class="config-label">Giá trị định phí (Fix) mỗi NH</label>
-                                    <input type="text" class="config-input" id="fvFixedAmount" value="50,000,000" placeholder="Nhập số tiền định phí...">
-                                </div>
-                                <div class="config-group">
-                                    <label class="config-label">Tỷ lệ biến phí (% trên Doanh thu)</label>
+                                    <label class="config-label">Tỷ trọng biến phí (% trên chi phí tháng gần nhất)</label>
                                     <div class="slider-input">
-                                        <input type="range" class="range-slider" id="fvVariablePercent" min="0" max="30" value="3.5" step="0.1">
-                                        <span class="slider-value" id="fvVariablePercentValue">3.5%</span>
+                                        <input type="range" class="range-slider" id="fvVariablePercent" min="0" max="100" value="50" step="5">
+                                        <span class="slider-value" id="fvVariablePercentValue">50%</span>
+                                    </div>
+                                    <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.35rem;">
+                                        Forecast = Chi phí LM × [(100% − tỷ trọng) + tỷ trọng × (Doanh thu dự phóng / Doanh thu LM)] — tính riêng từng nhà hàng.
+                                        Phần định phí giữ nguyên mức tháng gần nhất; phần biến phí scale theo doanh thu.
                                     </div>
                                 </div>
                             </div>
@@ -673,6 +673,13 @@
                             <button class="btn btn-accent" id="btnSaveFormulas" style="display:none;" title="Lưu công thức cố định cho tất cả Line Items (Admin)">
                                 💾 Lưu cố định
                             </button>
+                            <button class="btn btn-outline" id="btnRentalTemplate" style="display:none;" title="Tải template Excel tiền thuê CP0209 theo từng nhà hàng (kèm số hiện có)">
+                                📄 Template tiền thuê
+                            </button>
+                            <button class="btn btn-outline" id="btnImportRental" style="display:none;" title="Import file Excel tiền thuê CP0209 — số hợp đồng của từng profit center (Manager/Admin)">
+                                📥 Import tiền thuê (CP0209)
+                            </button>
+                            <input type="file" id="rentalFileInput" accept=".xlsx" style="display:none;">
                         </div>
                     </div>
 
@@ -1351,6 +1358,7 @@
                         <label style="display:block; font-weight:600; margin-bottom:4px; font-size:0.875rem;">Vai trò (role)</label>
                         <select id="m_role" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px; font-family:inherit;">
                             <option value="user">User thường (Bị chặn xem tất cả nếu không khai báo Chuỗi/NH)</option>
+                            <option value="manager">Manager (Như user + được chỉnh tỷ trọng biến phí/định phí)</option>
                             <option value="admin">Quản trị viên (Xem mọi thông tin)</option>
                         </select>
                     </div>

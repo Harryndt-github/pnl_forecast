@@ -1,10 +1,11 @@
 {
-  "updated_at": "2026-04-30 17:48:58",
-  "updated_by": "admin",
+  "updated_at": "2026-06-11 15:30:00",
+  "updated_by": "system — mapping theo Gop_y_Fin_rule_TC_forecast.xlsx Sheet1 (da chot)",
   "formulas": {
     "TC": {
       "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "rolling4w_adjustment": 5,
+      "_rule": "Excel: trend 4 tuan x seasonal thu-trong-tuan — seasonal cho he so ngay le.xlsx, tam dung rolling4w"
     },
     "DT01": {
       "method": "historical",
@@ -27,285 +28,289 @@
       "lookback": 4
     },
     "DT02": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "percent_revenue",
+      "lookback": 1,
+      "_rule": "Discount = %LM tren doanh thu"
     },
     "DT020101": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "percent_revenue",
+      "lookback": 1
     },
     "DT020201": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "percent_revenue",
+      "lookback": 1
     },
     "DT020301": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "percent_revenue",
+      "lookback": 1
     },
     "DT020302": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "percent_revenue",
+      "lookback": 1
     },
     "DT020303": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "percent_revenue",
+      "lookback": 1
     },
     "DT020304": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "percent_revenue",
+      "lookback": 1
     },
     "DT020310": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "percent_revenue",
+      "lookback": 1
     },
     "CP01": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "percent_revenue",
+      "lookback": 1,
+      "_rule": "COGS = %LM tren doanh thu (dieu chinh TA dynamic: cho nguon du lieu)"
     },
     "CP0101": {
       "method": "percent_revenue",
-      "base_period": "avg_3",
-      "revenue_growth": 5
+      "lookback": 1
     },
     "CP010101": {
       "method": "percent_revenue",
-      "base_period": "avg_3",
-      "revenue_growth": 5
+      "lookback": 1
     },
     "CP010102": {
       "method": "percent_revenue",
-      "base_period": "avg_3",
-      "revenue_growth": 5
+      "lookback": 1
     },
     "CP010103": {
       "method": "percent_revenue",
-      "base_period": "avg_3",
-      "revenue_growth": 5
+      "lookback": 1
     },
     "CP010201": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "percent_revenue",
+      "lookback": 1
     },
     "CP0104": {
       "method": "percent_revenue",
-      "base_period": "avg_3",
-      "revenue_growth": 5
+      "lookback": 1
     },
     "CP010401": {
       "method": "percent_revenue",
-      "base_period": "avg_3",
-      "revenue_growth": 5
+      "lookback": 1
     },
     "CP010402": {
       "method": "percent_revenue",
-      "base_period": "avg_3",
-      "revenue_growth": 5
+      "lookback": 1
     },
     "CP0201": {
-      "method": "fixed",
-      "fixed_value": 641000
+      "method": "fixed_variable",
+      "variable_percent": 50,
+      "_rule": "COL fix/variable theo LM cua tung store — Tai chinh can chot ty trong variable_percent"
     },
     "CP020104": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020105": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020106": {
-      "method": "fixed",
-      "fixed_value": 570000
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020116": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP0202": {
-      "method": "historical",
-      "growth_rate": 5,
-      "lookback": 4
+      "method": "fixed_variable",
+      "variable_percent": 50,
+      "_rule": "Utilities: variable T + fix T; dieu chinh dien theo trend LY chua co nguon du lieu"
     },
     "CP020201": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020202": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020203": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020204": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020205": {
-      "method": "percent_revenue",
-      "base_period": "avg_3",
-      "revenue_growth": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020206": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020207": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020208": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020209": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020210": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP0203": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020301": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020302": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020303": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020305": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020306": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP0204": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020401": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020402": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020403": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020404": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP0205": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020501": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020502": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP0206": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020601": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020602": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020603": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020604": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP0207": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50,
+      "_rule": "Marketing: variable T + fix T (marketing planning: cho nguon du lieu)"
     },
     "CP020701": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020702": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020703": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP0208": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP020801": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP0209": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "anchor",
+      "multiplier": 1.0,
+      "buffer": 0,
+      "anchor_period": null,
+      "_rule": "Rental theo hop dong thue — uu tien so tien import qua /api/rental/import (rental_costs.json, per PC); store chua co du lieu import thi fallback flat gia tri thang gan nhat"
     },
     "CP020901": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "anchor",
+      "multiplier": 1.0,
+      "buffer": 0,
+      "anchor_period": null
     },
     "CP0210": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP021003": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP021004": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP021008": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "fixed_variable",
+      "variable_percent": 50
     },
     "CP0211": {
-      "method": "rolling4w",
-      "rolling4w_adjustment": 5
+      "method": "anchor",
+      "multiplier": 1.0,
+      "buffer": 0,
+      "anchor_period": null,
+      "_rule": "Store D&A theo Zfi100N — flat gia tri thang gan nhat; writeoff khi co quyet dinh"
     },
     "CP021103": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null
     },
     "CP02110301": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null
     },
     "CP03": {
       "method": "anchor",
@@ -349,113 +354,113 @@
       "buffer": 0,
       "anchor_period": "avg_3"
     },
-    "DT03": {
+    "SC01": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null,
+      "_rule": "G&A Sub: Abs thang T — flat gia tri thang gan nhat; rules phan bo duoi UC cho Tai chinh chot"
+    },
+    "SC03": {
+      "method": "anchor",
+      "multiplier": 1.0,
+      "buffer": 0,
+      "anchor_period": null,
+      "_rule": "G&A Corp: Abs thang T"
+    },
+    "DT03": {
+      "method": "percent_revenue",
+      "ratio_percent": 0.95,
+      "_rule": "Financial income = 0.95% doanh thu (binh quan 2025)"
     },
     "DT0301": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null
     },
     "DT0302": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null
     },
     "DT0303": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null
     },
     "CP05": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null,
+      "_rule": "Financial expense: Treasury lay so — tam flat gia tri thang gan nhat"
     },
     "CP0501": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null
     },
     "CP0502": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null
     },
     "CP0503": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null
     },
     "DT04": {
-      "method": "anchor",
-      "multiplier": 1.05,
-      "buffer": 0,
-      "anchor_period": "avg_3"
+      "method": "percent_revenue",
+      "ratio_percent": 0.38,
+      "_rule": "Other income = 0.38% doanh thu (binh quan 2025)"
     },
     "DT0401": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null
     },
     "DT0402": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null
     },
     "DT0403": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null
     },
     "CP06": {
-      "method": "anchor",
-      "multiplier": 1.05,
-      "buffer": 0,
-      "anchor_period": "avg_3"
+      "method": "percent_revenue",
+      "ratio_percent": 0.27,
+      "_rule": "Other expense = 0.27% doanh thu (binh quan 2025)"
     },
     "CP0601": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null
     },
     "CP0602": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null
     },
     "CP0603": {
       "method": "anchor",
-      "multiplier": 1.05,
+      "multiplier": 1.0,
       "buffer": 0,
-      "anchor_period": "avg_3"
-    },
-    "CP07": {
-      "method": "anchor",
-      "multiplier": 1.05,
-      "buffer": 0,
-      "anchor_period": "avg_3"
-    },
-    "CP08": {
-      "method": "anchor",
-      "multiplier": 1.05,
-      "buffer": 0,
-      "anchor_period": "avg_3"
+      "anchor_period": null
     }
   }
 }
