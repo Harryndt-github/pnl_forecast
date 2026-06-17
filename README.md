@@ -113,7 +113,7 @@ Logic forecast theo mô hình **2 lớp**:
 
 ### Lớp cấu hình — `data/forecast_formulas.json`
 
-**Nguồn chân lý duy nhất** cho logic forecast, khai báo 97 chỉ tiêu. Mỗi chỉ tiêu chỉ định `method` + tham số. File **bị khóa** mặc định; muốn sửa phải đặt `ALLOW_FORMULA_EDIT=true` tạm thời, sau đó gọi `POST /api/forecast/formulas`.
+**Cấu trúc forecast** cho logic forecast, khai báo 97 chỉ tiêu. Mỗi chỉ tiêu chỉ định `method` + tham số. File **bị khóa** mặc định; muốn sửa phải đặt `ALLOW_FORMULA_EDIT=true` tạm thời, sau đó gọi `POST /api/forecast/formulas`.
 
 ### Lớp engine — `app.py`
 
