@@ -14,20 +14,22 @@ Thumbs.db
 
 # Logs
 *.log
-flask.log
-
-# Data files (potentially sensitive)
-master_load_log.json
-*.xlsx
 
 # Virtual environments
 venv/
 .venv/
 env/
 
-# App data dumps and test/benchmark data
-saved_reports.json
-rental_costs.json
-dna_costs.json
-data/
+# ─── Runtime-generated data (under data/) ───
+# These are produced/uploaded at runtime and must NOT be committed.
+data/saved_reports.json
+data/rental_costs.json
+data/dna_costs.json
+data/master_load_log.json
+data/forecast_excel_benchmark.json
+data/*.xlsx
 
+# Committed data (tracked on purpose, kept here for clarity — DO NOT ignore):
+#   data/users.json
+#   data/forecast_formulas.json        (LOCKED finance logic)
+#   data/forecast_period_archive.json

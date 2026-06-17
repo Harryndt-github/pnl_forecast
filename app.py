@@ -40,8 +40,15 @@ from werkzeug.security import check_password_hash, generate_password_hash
 # ─── Load environment ───
 load_dotenv()
 
+# ─── Paths ───
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+STATIC_DIR = os.path.join(BASE_DIR, 'static')
+TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
+os.makedirs(DATA_DIR, exist_ok=True)
+
 # ─── App Setup ───
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__, static_folder=STATIC_DIR, static_url_path='/static')
 app.secret_key = os.getenv('FLASK_SECRET_KEY') or 'pnl_forecast_local_session_key'
 
 # 1. Strict CORS
@@ -76,7 +83,7 @@ google = oauth.register(
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration'
 )
 
-USERS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.json')
+USERS_FILE = os.path.join(DATA_DIR, 'users.json')
 
 def get_users():
     if not os.path.exists(USERS_FILE):
@@ -123,7 +130,7 @@ def _require_admin():
 @app.route('/api/auth/login')
 def auth_login_page():
     # Serve unified login page
-    return send_from_directory('.', 'login.html')
+    return send_from_directory(TEMPLATES_DIR, 'login.html')
 
 @app.route('/api/auth/google')
 def auth_google_redirect():
@@ -275,7 +282,7 @@ _log_format = '%(asctime)s [%(levelname)s] %(message)s'
 logging.basicConfig(level=logging.INFO, format=_log_format)
 logger = logging.getLogger(__name__)
 
-_log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flask.log')
+_log_file = os.path.join(BASE_DIR, 'flask.log')
 try:
     _file_handler = RotatingFileHandler(
         _log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding='utf-8'
@@ -490,17 +497,17 @@ def _cache_bust():
 
 @app.route('/')
 def serve_index():
-    return send_from_directory('.', 'index.html')
+    return send_from_directory(TEMPLATES_DIR, 'index.html')
 
 
 @app.route('/css/<path:filename>')
 def serve_css(filename):
-    return send_from_directory('css', filename)
+    return send_from_directory(os.path.join(STATIC_DIR, 'css'), filename)
 
 
 @app.route('/js/<path:filename>')
 def serve_js(filename):
-    return send_from_directory('js', filename)
+    return send_from_directory(os.path.join(STATIC_DIR, 'js'), filename)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -2062,11 +2069,11 @@ def compute_forecast_v2():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
-SAVED_REPORTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'saved_reports.json')
-FORECAST_ARCHIVE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'forecast_period_archive.json')
-FORECAST_FORMULAS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'forecast_formulas.json')
-RENTAL_COSTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rental_costs.json')
-FORECAST_BENCHMARK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'forecast_excel_benchmark.json')
+SAVED_REPORTS_FILE = os.path.join(DATA_DIR, 'saved_reports.json')
+FORECAST_ARCHIVE_FILE = os.path.join(DATA_DIR, 'forecast_period_archive.json')
+FORECAST_FORMULAS_FILE = os.path.join(DATA_DIR, 'forecast_formulas.json')
+RENTAL_COSTS_FILE = os.path.join(DATA_DIR, 'rental_costs.json')
+FORECAST_BENCHMARK_FILE = os.path.join(DATA_DIR, 'forecast_excel_benchmark.json')
 
 
 def _load_forecast_formula_configs():
@@ -2161,7 +2168,7 @@ def update_variable_split():
 
 
 # ─── Chi phí per profit center import từ Excel: CP0209 (tiền thuê), CP0211 (khấu hao) ───
-DNA_COSTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dna_costs.json')
+DNA_COSTS_FILE = os.path.join(DATA_DIR, 'dna_costs.json')
 
 PC_COST_KINDS = {
     'rental': {
@@ -2941,13 +2948,13 @@ def bust_cache():
 # Columns: C=Code Report (New), E=Status, H=Store, J=Brand
 # ═══════════════════════════════════════════════════════════════
 
-MASTER_EXCEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Open_Close.xlsx')
+MASTER_EXCEL_PATH = os.path.join(DATA_DIR, 'Open_Close.xlsx')
 
 # In-memory cache for master list (avoid re-reading Excel every request)
 _master_cache = {'data': None, 'loaded_at': None}
 
 # Log storage (persisted in JSON file)
-MASTER_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'master_load_log.json')
+MASTER_LOG_FILE = os.path.join(DATA_DIR, 'master_load_log.json')
 
 
 def _read_master_excel():
