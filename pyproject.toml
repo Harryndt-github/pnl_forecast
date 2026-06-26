@@ -1,0 +1,8 @@
+[tool.pytest.ini_options]
+# Automated test suite lives in tests/test_unit.py and tests/test_api.py.
+# The legacy manual debug scripts (tests/test_db.py, test_chains.py, ...)
+# require a live server / database and are excluded from automated runs
+# via collect_ignore in tests/conftest.py.
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+python_files = ["test_unit.py", "test_api.py"]

@@ -95,6 +95,16 @@ pnl_forecast/
    python app.py
    ```
 
+3. **Chạy bằng Docker** (khuyến nghị khi bàn giao/deploy):
+   ```bash
+   cp .env.example .env          # điền creds DB & secret
+   docker compose up -d --build
+   curl http://localhost:5050/api/health
+   ```
+   Xem chi tiết deploy & vận hành tại [`docs/HANDOVER.md`](docs/HANDOVER.md).
+
+> 💡 Cài đặt **tái lập** (pin phiên bản): dùng `pip install -r requirements.lock` thay cho `requirements.txt`.
+
 ### Biến môi trường
 
 Xem `.env.example` để biết danh sách đầy đủ. Nhóm chính:
@@ -175,17 +185,30 @@ Engine thực thi nằm trong hàm `_project(code)` của `compute_forecast_v2()
 
 ## 8. Tests
 
-Thư mục `tests/` chứa các script kiểm thử thủ công (gọi API/CSDL trực tiếp); yêu cầu server đang chạy và/hoặc kết nối DB hợp lệ:
+### Test tự động (pytest — không cần DB)
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+pytest
+```
+
+- `tests/test_unit.py` — hàm thuần (vd `safe_float`, `_month_range_for_datekey`).
+- `tests/test_api.py` — smoke test tầng HTTP (health endpoint, chặn auth 401, serve static).
+- Chạy tự động trên CI: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (Python 3.10–3.12) khi push/PR vào `main`.
+
+### Script debug thủ công (cần server/DB sống)
+
+Các file còn lại trong `tests/` (`test_chains.py`, `test_db.py`, ...) là script gọi API/CSDL trực tiếp, **không** nằm trong CI:
 
 ```bash
 python tests/test_chains.py     # cần server chạy ở localhost:5050
 python tests/test_db.py         # kiểm tra kết nối MSSQL / StarRocks
 ```
 
-> 📌 Đây là script debug, **chưa phải** test suite tự động. Khuyến nghị chuyển sang `pytest` + mock DB cho CI/CD trong tương lai.
-
 ---
 
 ## 9. Tài liệu thêm
 
 - `docs/ARCHITECTURE.md` — kiến trúc tổng quan, nguồn dữ liệu, quy ước đường dẫn.
+- [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md) — cấu trúc từng file trong `data/` và hàm code đọc/ghi chúng.
+- [`docs/HANDOVER.md`](docs/HANDOVER.md) — tài liệu bàn giao: deploy, vận hành, rủi ro kế thừa.

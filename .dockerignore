@@ -1,0 +1,37 @@
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Virtual environments
+.venv/
+.venv-lock/
+venv/
+env/
+
+# Secrets & local config
+.env
+*.env
+
+# Runtime-generated data (mounted as a volume instead)
+data/*.xlsx
+data/saved_reports.json
+data/rental_costs.json
+data/dna_costs.json
+data/master_load_log.json
+data/forecast_excel_benchmark.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+
+# Docs not needed in the image
+docs/
+tests/

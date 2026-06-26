@@ -1,0 +1,36 @@
+# ─────────────────────────────────────────────────────────────
+#  PNL Forecast — single-service stack.
+#
+#  The app connects to EXTERNAL databases (MSSQL Actuals,
+#  StarRocks Forecast) configured via .env — they are NOT
+#  containerised here. Only the Flask/Waitress app runs.
+#
+#  Usage:
+#      cp .env.example .env   # then fill in DB creds & secrets
+#      docker compose up -d --build
+#      docker compose logs -f
+# ─────────────────────────────────────────────────────────────
+services:
+  pnl-forecast:
+    build: .
+    image: pnl-forecast:latest
+    container_name: pnl-forecast
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Force the in-container port to 5050 regardless of .env,
+      # so the published mapping below always lines up.
+      FLASK_PORT: "5050"
+      FLASK_DEBUG: "false"
+    ports:
+      - "${FLASK_PORT:-5050}:5050"
+    volumes:
+      # Persist runtime-generated data (uploads, saved reports, logs)
+      # and keep committed config files (users.json, formulas) on disk.
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5050/api/health').status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

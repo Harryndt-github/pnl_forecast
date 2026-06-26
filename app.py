@@ -86,13 +86,30 @@ google = oauth.register(
 USERS_FILE = os.path.join(DATA_DIR, 'users.json')
 
 def get_users():
+    """Đọc toàn bộ tài khoản nội bộ từ data/users.json.
+
+    Mỗi phần tử là 1 dict:
+        username       : tên đăng nhập (khoá định danh)
+        password_hash  : mật khẩu đã băm bằng werkzeug (scrypt) — KHÔNG lưu plaintext
+        role           : 'admin' | 'manager' | 'user' (quy định quyền thao tác)
+        allowed_chains : list mã chuỗi (4 ký tự) user được xem; [] = không giới hạn theo chuỗi
+        allowed_pcs    : list mã profit-center user được xem; [] = không giới hạn theo PC
+    File không tồn tại → trả [] (chưa có user nào). Dùng cho login & RBAC.
+    """
     if not os.path.exists(USERS_FILE):
         return []
     with open(USERS_FILE, 'r', encoding='utf-8') as f:
         return json.load(f)
 
 def filter_restaurants_by_rbac(pc_list):
-    """Filters a list of PC codes based on current user session role."""
+    """Lọc danh sách mã PC theo phạm vi dữ liệu (RBAC) của user đang đăng nhập.
+
+    Logic phân quyền (đọc từ users.json qua session):
+      - Chưa đăng nhập  → trả nguyên danh sách (các tầng khác đã chặn truy cập).
+      - role == 'admin' → thấy tất cả, không lọc.
+      - Ngược lại       → chỉ giữ PC nằm trong allowed_pcs, HOẶC có 4 ký tự đầu
+                          (mã chuỗi) nằm trong allowed_chains.
+    """
     if not session.get('user'):
         return pc_list
     user = session['user']
@@ -1775,7 +1792,29 @@ def _override_subtree_total(out, prefix, total):
 @app.route('/api/forecast/compute-v2', methods=['POST'])
 @limiter.limit("15 per minute")
 def compute_forecast_v2():
-    """Bottom-up forecast: compute each restaurant first, then roll up."""
+    """Engine forecast CHÍNH (bottom-up): dự báo P&L từng nhà hàng rồi cộng lên.
+
+    Đây là endpoint "live" (v1 compute_forecast đã deprecated). Luồng xử lý:
+
+      1. Xác định phạm vi store (selected_pcs) từ pc/chain qua RBAC + master Excel.
+      2. Lấy tối đa 12 kỳ actual gần nhất từ MSSQL (FC213_FACT_ACT), pivot thành
+         hist_by_pc[pc][datekey][indicator_code] = value.
+      3. Ghép TC (lượt khách) từ DAILY_SALES và tính TA = DT01/TC cho mỗi kỳ.
+      4. Loại "tháng dở" (tháng hiện tại chưa kết thúc) khỏi base bình quân để
+         không kéo tụt forecast — nhưng vẫn neo kỳ forecast bắt đầu từ tháng đó.
+      5. Với MỖI store và MỖI kỳ tương lai: chạy _project(code) cho từng chỉ tiêu
+         theo method khai báo trong forecast_formulas.json (logic ĐÃ KHOÁ —
+         override gửi từ client bị bỏ qua). Thứ tự: TC & DT01 trước (vì
+         percent_revenue/fixed_variable phụ thuộc DT01 dự phóng cùng kỳ).
+      6. Ghi đè CP0209 (tiền thuê) / CP0211 (khấu hao) bằng số import per-store
+         nếu có (rental_costs.json / dna_costs.json).
+      7. _apply_pnl_formula_fields: tính các dòng công thức (SD*, CP07, CP08, TA)
+         và cộng con→cha.
+      8. Rollup: cộng các store theo từng kỳ ra số tổng (projections).
+      9. (Tuỳ chọn) đối chiếu/căn chỉnh với benchmark Excel khi phạm vi ≥ 90%.
+
+    Trả về: projections (số tổng) + restaurant_projections (chi tiết từng store).
+    """
     try:
         body = request.get_json() or {}
         horizon = int(body.get('horizon', 1) or 1)
@@ -1922,6 +1961,28 @@ def compute_forecast_v2():
                 growth_period = idx if include_current_month else idx + 1
 
                 def _project(code):
+                    """Dự phóng MỘT chỉ tiêu (code) cho kỳ fp của store p hiện tại.
+
+                    Đọc cfg = forecast_formulas.json[code] để chọn 1 trong 5 method
+                    (vẫn áp dụng được cho code không khai báo → mặc định 'historical'):
+
+                      • fixed           : trả thẳng fixed_value (hoặc base nếu thiếu).
+                      • anchor          : value_kỳ_neo × multiplier + buffer. anchor_period
+                                          null → neo tháng gần nhất. Dùng cho thuê/khấu hao
+                                          (flat) và chi phí ổn định (multiplier 1.05 = +5%).
+                      • percent_revenue : DT01 dự phóng × tỷ lệ. ratio_percent cố định
+                                          (vd DT03=0.95%) HOẶC %LM bình quân lookback kỳ.
+                      • fixed_variable  : phần fix giữ nguyên + phần biến phí scale theo
+                                          (DT01 dự phóng / DT01 tháng gần nhất). var_share =
+                                          variable_percent/100 (0-100, manager chỉnh được).
+                      • rolling4w       : riêng TC = TC bình quân/ngày 28 ngày gần nhất ×
+                                          số ngày tháng forecast × (1+adj)^n. Code khác →
+                                          base × (1+adj)^n.
+                      • mặc định (historical): base bình quân lookback kỳ × (1+growth)^n.
+
+                    base = bình quân `lookback` kỳ gần nhất của chính store đó (đã loại
+                    tháng dở). growth_period (n) = số bước kể từ kỳ neo, tính luỹ kế.
+                    """
                     vals = [safe_float(r.get(code, 0)) for r in store_hist if code in r]
                     recent = vals[-lookback:] if vals else []
                     base = sum(recent) / len(recent) if recent else 0.0
@@ -2077,6 +2138,14 @@ FORECAST_BENCHMARK_FILE = os.path.join(DATA_DIR, 'forecast_excel_benchmark.json'
 
 
 def _load_forecast_formula_configs():
+    """Đọc map cấu hình công thức từ data/forecast_formulas.json.
+
+    Trả về CHỈ phần `formulas`: { indicator_code: {method, ...tham số, _rule} }.
+    Đây là "single source of truth" của logic forecast (đã chốt theo rule Tài chính),
+    được _project() trong compute_forecast_v2 dùng để quyết định cách dự phóng từng
+    chỉ tiêu. Bỏ qua metadata (updated_at/updated_by). Lỗi đọc → trả {} (an toàn:
+    mọi code sẽ rơi về method mặc định 'historical').
+    """
     if os.path.exists(FORECAST_FORMULAS_FILE):
         try:
             with open(FORECAST_FORMULAS_FILE, 'r', encoding='utf-8') as f:
@@ -2191,6 +2260,12 @@ PC_COST_KINDS = {
 
 
 def _read_pc_costs_meta(path):
+    """Đọc nguyên file chi phí per-PC (rental_costs.json / dna_costs.json).
+
+    Cấu trúc: { updated_at, updated_by, costs: { pc: {amount, ...} } }.
+    Các file này SINH RUNTIME khi manager/admin import Excel (đã .gitignore),
+    nên có thể chưa tồn tại → trả {}.
+    """
     if os.path.exists(path):
         try:
             with open(path, 'r', encoding='utf-8') as f:
@@ -2201,7 +2276,11 @@ def _read_pc_costs_meta(path):
 
 
 def _load_pc_cost_amounts(path):
-    """Return {pc: monthly_amount} from an imported per-PC cost file."""
+    """Rút gọn file chi phí per-PC thành map { pc: số_tiền_tháng (float) }.
+
+    Dùng trong compute_forecast_v2 để ghi đè CP0209 (thuê) / CP0211 (khấu hao)
+    bằng số thực import thay cho ước lượng theo công thức.
+    """
     meta = _read_pc_costs_meta(path)
     return {str(pc): safe_float(info.get('amount'))
             for pc, info in (meta.get('costs') or {}).items()}
@@ -2604,6 +2683,11 @@ def _apply_pnl_formula_fields(row, recompute_parents=True):
     return row
 
 def _load_saved_reports():
+    """Đọc list báo cáo forecast người dùng đã lưu (data/saved_reports.json).
+
+    File sinh runtime (đã .gitignore) → chưa có thì trả []. Mỗi report là một
+    bản chụp đầy đủ kết quả compute (filter, method, projections, ...).
+    """
     if os.path.exists(SAVED_REPORTS_FILE):
         try:
             with open(SAVED_REPORTS_FILE, 'r', encoding='utf-8') as f:
@@ -2613,11 +2697,18 @@ def _load_saved_reports():
     return []
 
 def _save_reports_to_file(reports):
+    """Ghi đè toàn bộ list report xuống saved_reports.json (UTF-8, giữ tiếng Việt)."""
     with open(SAVED_REPORTS_FILE, 'w', encoding='utf-8') as f:
         json.dump(reports, f, ensure_ascii=False, indent=2)
 
 
 def _load_forecast_archive():
+    """Đọc kho lưu forecast theo kỳ (data/forecast_period_archive.json).
+
+    Cấu trúc: { periods: { "YYYYMM": <snapshot kỳ đó> } }. Đây là bản chốt
+    "mỗi kỳ một bản forecast hợp nhất" (xem _archive_report_by_period). File
+    được COMMIT trong repo. Chưa tồn tại → trả khung rỗng {'periods': {}}.
+    """
     if os.path.exists(FORECAST_ARCHIVE_FILE):
         try:
             with open(FORECAST_ARCHIVE_FILE, 'r', encoding='utf-8') as f:
@@ -2628,11 +2719,13 @@ def _load_forecast_archive():
 
 
 def _save_forecast_archive(archive):
+    """Ghi đè toàn bộ kho archive xuống forecast_period_archive.json."""
     with open(FORECAST_ARCHIVE_FILE, 'w', encoding='utf-8') as f:
         json.dump(archive, f, ensure_ascii=False, indent=2)
 
 
 def _projection_row_for_period(rows, datekey):
+    """Tìm dòng projection của đúng kỳ `datekey` trong list rows (None nếu không có)."""
     for row in rows or []:
         if int(row.get('datekey', 0)) == int(datekey):
             return row
@@ -2640,6 +2733,12 @@ def _projection_row_for_period(rows, datekey):
 
 
 def _rollup_restaurant_period_rows(rest_rows):
+    """Cộng các dòng store của CÙNG một kỳ thành dòng tổng (chuỗi/All).
+
+    rest_rows = { pc: row_kỳ_đó }. Cộng mọi chỉ tiêu (trừ datekey/TA), rồi
+    tính lại TA = DT01/TC và các dòng công thức bằng _apply_pnl_formula_fields
+    với recompute_parents=False (mỗi store đã tự nhất quán cha=tổng-con).
+    """
     row = {'datekey': None}
     for rest_row in rest_rows.values():
         if row['datekey'] is None:
@@ -2654,6 +2753,19 @@ def _rollup_restaurant_period_rows(rest_rows):
 
 
 def _archive_report_by_period(report):
+    """Tách 1 report (nhiều kỳ) và UPSERT từng kỳ vào forecast_period_archive.json.
+
+    Mục tiêu: mỗi kỳ "YYYYMM" giữ MỘT bản forecast hợp nhất, gộp dần theo store
+    qua nhiều lần lưu (vd lưu chuỗi A rồi chuỗi B vào cùng tháng → bản kỳ đó có
+    cả store của A và B). Với mỗi kỳ trong report.projections:
+      - Lấy snapshot kỳ hiện có (hoặc tạo mới khung rỗng).
+      - Cập nhật metadata (id, savedAt, filter, method, calibration...) và thêm
+        một dòng vào source_reports để truy vết nguồn.
+      - Trộn restaurant_projections: lấy đúng dòng của kỳ này cho từng store.
+      - Nếu đã có chi tiết store → projections kỳ = rollup từ các store (chính
+        xác hơn); nếu không → dùng thẳng dòng projection tổng của report.
+    Cuối cùng ghi đè cả file. Có side effect ghi đĩa.
+    """
     archive = _load_forecast_archive()
     periods = archive.setdefault('periods', {})
     report_id = report.get('id')
